@@ -1,0 +1,49 @@
+# Dependencies & build
+**/node_modules/
+**/target/
+**/dist/
+!frontend/dist/
+frontend/dist/assets/
+*.tsbuildinfo
+
+# Local machine state (do not publish)
+fusion-config.json
+last-ensure-result.json
+last-switch-result.json
+state.json
+host-out.log
+host-crash.log
+logs/
+state/
+backups/
+
+# Third-party copies & build artifacts (download/build separately, see README)
+third_party/
+bin/
+*.exe
+
+# Local probe / scratch outputs
+smoke-*.txt
+test-*.txt
+pester-*.txt
+*-probe*.txt
+layout-probe.txt
+live-state.txt
+orphan-close.txt
+plain-codex-close.txt
+cargo-release*.txt
+cargo-release*.log
+ACCEPTANCE.md
+
+# OS / editor
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# Secrets / env
+.env
+.env.*
+*.pem
+*.key

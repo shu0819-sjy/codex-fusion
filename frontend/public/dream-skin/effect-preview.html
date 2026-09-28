@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-ds-effect="none">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dream Skin Effect Preview</title>
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0b1018;
+    }
+    .stage {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      isolation: isolate;
+    }
+    .wallpaper {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transform-origin: 52% 46%;
+    }
+    .wallpaper.is-empty {
+      background:
+        radial-gradient(circle at 30% 20%, rgba(91,140,255,0.18), transparent 45%),
+        linear-gradient(160deg, #141a26, #0b1018 60%);
+    }
+    /* 与 Dream Skin v4 CSS 专用效果保持一致：渐变流动 / 镜头推进 */
+    html[data-ds-effect='gradient-shift'] .stage::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+      background: linear-gradient(118deg, rgba(51, 112, 153, 0.09), transparent 34%, rgba(177, 94, 133, 0.07), transparent 70%, rgba(89, 132, 105, 0.08));
+      background-size: 220% 220%;
+      mix-blend-mode: screen;
+      animation: ds-v4-gradient-drift 18s ease-in-out infinite alternate;
+    }
+    html[data-ds-effect='kenburns'] .wallpaper {
+      animation: ds-v4-kenburns 28s cubic-bezier(0.4, 0, 0.2, 1) infinite alternate;
+    }
+    @keyframes ds-v4-gradient-drift {
+      0% { background-position: 0% 45%; opacity: 0.55; }
+      50% { background-position: 55% 70%; opacity: 0.9; }
+      100% { background-position: 100% 20%; opacity: 0.62; }
+    }
+    @keyframes ds-v4-kenburns {
+      0% { transform: scale(1) translate3d(0, 0, 0); }
+      100% { transform: scale(1.025) translate3d(-0.45%, -0.35%, 0); }
+    }
+    /* 引擎画布默认 fixed；在预览 iframe 内覆盖整个预览视口 */
+    #ds-dynamic-canvas {
+      position: fixed !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      z-index: 3 !important;
+      pointer-events: none !important;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html[data-ds-effect='gradient-shift'] .stage::after,
+      html[data-ds-effect='kenburns'] .wallpaper,
+      #ds-dynamic-canvas {
+        animation: none !important;
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="stage" data-ds-part="home-hero">
+    <img id="art" class="wallpaper is-empty" data-ds-part="home-hero" alt="" />
+  </div>
+  <script src="./dynamic-effects.v5.js"></script>
+  <script>
+    (function () {
+      var CANVAS_TYPES = {
+        rain: true, particles: true, snow: true, fog: true,
+        stars: true, matrix: true, road: true
+      };
+      var CSS_TYPES = {
+        'gradient-shift': true,
+        kenburns: true
+      };
+      var art = document.getElementById('art');
+      var current = { effect: 'none', config: {} };
+
+      function notifyReady() {
+        try {
+          parent.postMessage({ source: 'dream-skin-effect-preview', type: 'ready' }, '*');
+        } catch (error) {}
+      }
+
+      function setWallpaper(url) {
+        if (!url) {
+          art.removeAttribute('src');
+          art.classList.add('is-empty');
+          return;
+        }
+        art.classList.remove('is-empty');
+        if (art.getAttribute('src') === url) return;
+        art.onload = function () {
+          // 壁纸加载后按当前效果重建一次，让场景轮廓/尺寸更准
+          applyEffect(current.effect, current.config);
+        };
+        art.src = url;
+      }
+
+      function applyEffect(effect, config) {
+        var next = typeof effect === 'string' ? effect : 'none';
+        var nextConfig = config && typeof config === 'object' ? config : {};
+        current = { effect: next, config: nextConfig };
+        document.documentElement.setAttribute('data-ds-effect', next);
+        document.documentElement.removeAttribute('data-ds-effect-config');
+
+        if (!window.dynamicEffects) return;
+
+        if (next === 'none') {
+          window.dynamicEffects.stop();
+          return;
+        }
+
+        if (CANVAS_TYPES[next]) {
+          document.documentElement.setAttribute('data-ds-effect-config', JSON.stringify(nextConfig));
+          window.dynamicEffects.start(next, nextConfig);
+          return;
+        }
+
+        // 渐变/镜头推进：停掉 Canvas，交给本页 CSS（与 Dream Skin v4 专用效果同源）
+        window.dynamicEffects.stop();
+        if (!CSS_TYPES[next]) {
+          document.documentElement.setAttribute('data-ds-effect', 'none');
+        }
+      }
+
+      window.addEventListener('message', function (event) {
+        var data = event && event.data;
+        if (!data || data.source !== 'dream-skin-effect-preview-host') return;
+        if (data.type === 'setWallpaper') {
+          setWallpaper(typeof data.url === 'string' ? data.url : '');
+          return;
+        }
+        if (data.type === 'setEffect') {
+          applyEffect(data.effect, data.config);
+        }
+      });
+
+      // 支持通过 hash 冷启动（便于调试）
+      try {
+        var hash = new URLSearchParams(String(location.hash || '').replace(/^#/, ''));
+        var bootEffect = hash.get('effect');
+        var bootImage = hash.get('img');
+        if (bootImage) setWallpaper(bootImage);
+        if (bootEffect) applyEffect(bootEffect, {});
+      } catch (error) {}
+
+      notifyReady();
+    })();
+  </script>
+</body>
+</html>

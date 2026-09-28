@@ -1,0 +1,36 @@
+/* Codex Dream Skin - Dynamic Effects v5
+ * 所有天气由 v5 Canvas 绘制，CSS 仅负责层级与减弱动画偏好。
+ */
+
+#ds-dynamic-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0;
+  contain: strict;
+  transition: opacity 420ms ease;
+}
+
+html[data-ds-canvas-effect] #ds-dynamic-canvas {
+  opacity: 1;
+}
+
+html[data-ds-lightning-active='true'] #ds-dynamic-canvas {
+  z-index: 3;
+}
+
+html[data-ds-canvas-effect] [data-ds-part='sidebar'],
+html[data-ds-canvas-effect] [data-ds-part='header'],
+html[data-ds-canvas-effect] [data-ds-part='composer'],
+html[data-ds-canvas-effect] [data-ds-part='thread'],
+html[data-ds-canvas-effect] [data-ds-part='message'] {
+  position: relative;
+  z-index: 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ds-dynamic-canvas {
+    display: none !important;
+  }
+}
