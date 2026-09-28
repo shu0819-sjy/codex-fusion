@@ -3,7 +3,6 @@
 **/target/
 **/dist/
 !frontend/dist/
-frontend/dist/assets/
 *.tsbuildinfo
 
 # Local machine state (do not publish)
