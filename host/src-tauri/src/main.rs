@@ -798,14 +798,20 @@ fn last_switch_outcome() -> Result<Value, String> {
 /// 入参：无；返回：模式、端口列表、连通性与面向用户的说明；边界：探测失败时如实返回 unknown。
 #[tauri::command]
 fn code_codex_health() -> Result<Value, String> {
-    let probe = r#"
-$sessionPath = 'D:\CodexFusion\state\code-codex-session.json'
+    let probe = format!(
+        r#"
+$sessionPath = '{}'
 $sessionPresent = Test-Path -LiteralPath $sessionPath
-$ports = @(Get-CimInstance Win32_Process -Filter "Name = 'ChatGPT.exe'" -ErrorAction SilentlyContinue | ForEach-Object {
-  if ($_.CommandLine -match 'remote-debugging-port=(\d+)') { [int]$Matches[1] }
-} | Sort-Object -Unique)
-[pscustomobject]@{ sessionPresent = $sessionPresent; ports = @($ports) } | ConvertTo-Json -Compress
-"#;
+$ports = @(Get-CimInstance Win32_Process -Filter "Name = 'ChatGPT.exe'" -ErrorAction SilentlyContinue | ForEach-Object {{
+  if ($_.CommandLine -match 'remote-debugging-port=(\d+)') {{ [int]$Matches[1] }}
+}} | Sort-Object -Unique)
+[pscustomobject]@{{ sessionPresent = $sessionPresent; ports = @($ports) }} | ConvertTo-Json -Compress
+"#,
+        fusion_root()
+            .join("state")
+            .join("code-codex-session.json")
+            .display()
+    );
     let output = Command::new("powershell.exe")
         .args([
             "-NoProfile",

@@ -22,6 +22,9 @@ third_party/
 bin/
 *.exe
 
+# Tauri generated schemas
+host/src-tauri/gen/
+
 # Local probe / scratch outputs
 smoke-*.txt
 test-*.txt

@@ -47,6 +47,7 @@ copy ..\code-codex-upstream\target\release\workspace-service.exe ..\..\bin\fusio
 - 日常请从 **Codex Fusion** 启动，不要只点官方 Codex 图标（否则无皮肤）
 - 若已误开无调试端口的 Codex：托盘 → **重启 Codex（带皮肤）**
 - `fusion-config.json` 含本机路径，已加入 `.gitignore`，请用 `fusion-config.example.json` 作为模板
+- 已知边界：托盘「重启 Codex（带皮肤）」与宿主启动注入链完全自包含；旧式「模式互切」中的切回 Dream Skin 方向保留了对本地 Dream Skin engine 的兼容依赖，第三方环境若没有该 engine 会收到明确报错，不影响主题工作台与自动注入
 
 ## 许可
 
