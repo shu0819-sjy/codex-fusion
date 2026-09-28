@@ -25,12 +25,7 @@ const EFFECT_TYPES: &[&str] = &[
 ];
 
 fn state_root() -> PathBuf {
-    let local = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| {
-        std::env::var("USERPROFILE")
-            .map(|u| format!("{u}\\AppData\\Local"))
-            .unwrap_or_else(|_| r"C:\ProgramData".into())
-    });
-    PathBuf::from(local).join("CodexDreamSkin")
+    crate::runtime_state_root()
 }
 fn themes_dir() -> PathBuf {
     state_root().join("themes")
@@ -362,6 +357,15 @@ fn body_json(req: &Request) -> Result<Value, String> {
     serde_json::from_slice(&req.body).map_err(|e| e.to_string())
 }
 
+/// 将 Codex 重启结果映射为 HTTP 响应。
+/// 入参：runtime 的成功或失败结果；返回：状态码与 JSON；边界：任何错误都不能伪装为 200 成功。
+fn restart_response(result: Result<Value, String>) -> (u16, Value) {
+    match result {
+        Ok(value) => (200, value),
+        Err(error) => (502, json!({"ok": false, "error": error})),
+    }
+}
+
 fn handle(mut stream: TcpStream) {
     let Ok(req) = parse_request(&mut stream) else {
         return;
@@ -398,17 +402,9 @@ fn handle(mut stream: TcpStream) {
             json_response(&mut stream, 200, s)
         }
         ("POST", "/api/restart-codex") => {
-            // Keep API snappy like the old launcher: kick off restart/inject in background.
-            thread::spawn(|| {
-                if let Err(error) = crate::codex_runtime::ensure_dream_skin_runtime(true) {
-                    eprintln!("Codex Fusion restart/inject failed: {error}");
-                }
-            });
-            json_response(
-                &mut stream,
-                200,
-                json!({"ok":true,"message":"正在由 Codex Fusion 重启并注入 Codex...","steps":[{"step":"start","done":true}],"port":9335}),
-            )
+            let (status, body) =
+                restart_response(crate::codex_runtime::ensure_dream_skin_runtime(true));
+            json_response(&mut stream, status, body)
         }
         ("GET", "/api/themes") => {
             let q = req.path.split_once("q=").map(|(_, v)| v).unwrap_or("");
@@ -746,4 +742,28 @@ pub fn start() -> Result<(), String> {
         })
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::restart_response;
+    use serde_json::json;
+
+    #[test]
+    fn restart_failure_is_not_reported_as_success() {
+        let (status, body) = restart_response(Err("restart failed".into()));
+
+        assert_eq!(status, 502);
+        assert_eq!(body["ok"], json!(false));
+        assert_eq!(body["error"], json!("restart failed"));
+    }
+
+    #[test]
+    fn restart_success_preserves_runtime_result() {
+        let result = json!({"ok": true, "injected": {"ok": true}});
+        let (status, body) = restart_response(Ok(result.clone()));
+
+        assert_eq!(status, 200);
+        assert_eq!(body, result);
+    }
 }

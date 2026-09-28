@@ -1,11 +1,11 @@
 # Codex Fusion 独立前端
 
-这是 Codex Fusion 的独立工作区界面，位于 `D:\CodexFusion\frontend`。前端只依赖 `WorkspaceBridge`，不直接访问文件系统、不启动进程、不连接 CDP。
+这是 Codex Fusion 的独立工作区界面，位于仓库的 `frontend/` 目录。前端只依赖 `WorkspaceBridge`，不直接访问文件系统、不启动进程、不连接 CDP。
 
 ## 本地运行
 
 ```powershell
-Set-Location D:\CodexFusion\frontend
+Set-Location <仓库根目录>\frontend
 npm install
 npm run dev
 ```
