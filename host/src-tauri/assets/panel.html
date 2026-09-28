@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Codex Dream Skin · 主题管理</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0f0f13;--bg2:#17171d;--bg3:#1e1e26;--card:#22222c;--card-hover:#2a2a36;
+  --card-active:#1e3a5f;--border:#33333f;--border-active:#5a9eff;--text:#f0f0f5;
+  --text-dim:#9b9ba8;--text-faint:#646470;--accent:#5a9eff;--accent2:#7b5cff;
+  --success:#4baf69;--danger:#af3c3c;--radius:16px;
+}
+html,body{height:100%}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(ellipse at 20% 20%,rgba(90,158,255,.08) 0%,transparent 50%),radial-gradient(ellipse at 80% 80%,rgba(123,92,255,.06) 0%,transparent 50%);pointer-events:none;z-index:0}
+
+.topbar{position:sticky;top:0;z-index:100;display:flex;align-items:center;gap:20px;padding:16px 32px;background:rgba(15,15,19,.85);backdrop-filter:blur(20px);border-bottom:1px solid var(--border)}
+.logo{display:flex;align-items:center;gap:12px}
+.logo-icon{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 4px 20px rgba(90,158,255,.3);flex-shrink:0}
+.logo-text h1{font-size:18px;font-weight:700;letter-spacing:-.3px}
+.logo-text p{font-size:11px;color:var(--text-faint);margin-top:2px}
+.search{flex:1;max-width:360px;position:relative}
+.search input{width:100%;padding:10px 16px 10px 40px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;outline:none;transition:all .2s}
+.search input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(90,158,255,.15)}
+.search .icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-faint);font-size:14px}
+.badge{display:flex;align-items:center;gap:10px;padding:8px 16px;background:var(--card);border:1px solid var(--border);border-radius:12px;flex-shrink:0}
+.badge .dot{width:8px;height:8px;border-radius:50%;background:var(--success);box-shadow:0 0 8px var(--success);flex-shrink:0}
+.badge .dot.off{background:var(--text-faint);box-shadow:none}
+.badge .label{font-size:11px;color:var(--text-faint)}
+.badge .value{font-size:13px;font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.main{position:relative;z-index:1;max-width:1400px;margin:0 auto;padding:32px;min-height:calc(100vh - 73px)}
+.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.section-head h2{font-size:15px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px}
+.count{font-size:12px;color:var(--text-faint);background:var(--bg3);padding:4px 10px;border-radius:20px}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px}
+.card{position:relative;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;cursor:pointer;transition:all .3s cubic-bezier(.4,0,.2,1)}
+.card:hover{transform:translateY(-4px);border-color:var(--border-active);box-shadow:0 12px 40px rgba(0,0,0,.4),0 0 0 1px rgba(90,158,255,.2)}
+.card.active{border-color:var(--border-active);background:var(--card-active)}
+.card.active::before{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(90,158,255,.1) 0%,transparent 60%);pointer-events:none}
+.card-img{width:100%;height:170px;object-fit:cover;display:block;background:var(--bg2)}
+.card-img-placeholder{width:100%;height:170px;display:flex;align-items:center;justify-content:center;background:var(--bg2);color:var(--text-faint);font-size:13px}
+.card-body{padding:14px 16px 16px}
+.card-name{font-size:15px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.active-tag{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--success);color:#fff;text-transform:uppercase;letter-spacing:.5px}
+.card-meta{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--text-faint);flex-wrap:wrap}
+.card-meta .sep{width:3px;height:3px;border-radius:50%;background:var(--text-faint);flex-shrink:0}
+
+.card-overlay{position:absolute;inset:0;background:rgba(15,15,19,.75);backdrop-filter:blur(4px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;opacity:0;transition:opacity .25s;z-index:5}
+.card:hover .card-overlay{opacity:1}
+.overlay-btn{padding:10px 24px;border-radius:10px;border:none;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;min-width:140px}
+.overlay-btn.primary{background:var(--accent);color:#fff}
+.overlay-btn.primary:hover{background:#6baaff;transform:scale(1.03)}
+.overlay-btn.ghost{background:transparent;color:var(--text);border:1px solid var(--border)}
+.overlay-btn.ghost:hover{border-color:var(--text-dim);background:rgba(255,255,255,.05)}
+.overlay-btn.danger{background:transparent;color:var(--danger);border:1px solid var(--danger)}
+.overlay-btn.danger:hover{background:var(--danger);color:#fff}
+
+.actions{display:flex;gap:10px;margin-top:28px;flex-wrap:wrap}
+.action-btn{display:flex;align-items:center;gap:8px;padding:12px 20px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;transition:all .2s}
+.action-btn:hover{border-color:var(--accent);background:var(--card-hover);transform:translateY(-1px)}
+.action-btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#fff;box-shadow:0 4px 16px rgba(90,158,255,.3)}
+.action-btn.primary:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(90,158,255,.4)}
+
+.effect-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.effect-btn{padding:10px 18px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text-dim);font-size:13px;font-weight:500;cursor:pointer;transition:all .2s}
+.effect-btn:hover{border-color:var(--accent);color:var(--text);background:var(--card-hover)}
+.effect-btn.active{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#fff;box-shadow:0 2px 12px rgba(90,158,255,.3)}
+
+.effect-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;margin-bottom:8px}
+.effect-card{position:relative;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;cursor:pointer;transition:all .25s}
+.effect-card:hover{transform:translateY(-3px);border-color:var(--border-active);box-shadow:0 8px 28px rgba(0,0,0,.35)}
+.effect-card .eff-icon{font-size:28px;margin-bottom:10px}
+.effect-card .eff-name{font-size:15px;font-weight:600;margin-bottom:4px}
+.effect-card .eff-desc{font-size:12px;color:var(--text-faint);margin-bottom:12px;min-height:32px}
+.effect-card .eff-type{display:inline-block;font-size:10px;padding:2px 8px;border-radius:20px;background:var(--bg3);color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px}
+.effect-card .eff-actions{display:flex;gap:6px;margin-top:14px}
+.effect-card .eff-btn{flex:1;padding:7px 10px;border-radius:8px;border:none;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s}
+.effect-card .eff-btn.apply{background:var(--accent);color:#fff}
+.effect-card .eff-btn.apply:hover{background:#6baaff}
+.effect-card .eff-btn.edit{background:var(--bg3);color:var(--text-dim)}
+.effect-card .eff-btn.edit:hover{background:var(--card-hover);color:var(--text)}
+.effect-card .eff-btn.del{background:transparent;color:var(--danger);border:1px solid rgba(175,60,60,.4)}
+.effect-card .eff-btn.del:hover{background:var(--danger);color:#fff}
+
+.effect-editor-modal{max-width:780px;width:95%}
+.effect-editor-layout{display:flex;gap:24px;margin-bottom:20px}
+.effect-editor-form{flex:1}
+.effect-editor-preview{width:340px;flex-shrink:0}
+.effect-editor-preview canvas{width:100%;border-radius:12px;background:var(--bg);border:1px solid var(--border)}
+.field-label{display:block;font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 6px;font-weight:600}
+.eff-params-container{margin-top:8px}
+.param-row{margin-bottom:14px}
+.param-row label{display:flex;justify-content:space-between;font-size:12px;color:var(--text-dim);margin-bottom:6px}
+.param-row label span{color:var(--accent);font-weight:600}
+.param-row input[type=range]{width:100%;height:6px;border-radius:3px;background:var(--bg3);outline:none;-webkit-appearance:none;appearance:none}
+.param-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer;box-shadow:0 2px 8px rgba(90,158,255,.4)}
+.param-row input[type=checkbox]{margin-right:6px}
+.param-check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-dim);cursor:pointer}
+select{width:100%;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;outline:none;cursor:pointer}
+select:focus{border-color:var(--accent)}
+
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;z-index:1000}
+.modal-overlay.show{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:32px;max-width:500px;width:90%;max-height:85vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,.5)}
+.modal h3{font-size:18px;font-weight:700;margin-bottom:20px}
+.modal input[type=text]{width:100%;padding:12px 16px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;outline:none;margin-bottom:16px;transition:border .2s}
+.modal input[type=text]:focus{border-color:var(--accent)}
+.drop-zone{border:2px dashed var(--border);border-radius:12px;padding:40px 20px;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:16px}
+.drop-zone:hover,.drop-zone.drag{border-color:var(--accent);background:rgba(90,158,255,.05)}
+.drop-zone .icon{font-size:36px;margin-bottom:10px}
+.drop-zone p{font-size:13px;color:var(--text-dim)}
+.drop-zone .filename{font-size:12px;color:var(--accent);margin-top:8px;word-break:break-all}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:8px}
+.modal-actions button{padding:10px 20px;border-radius:10px;border:none;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s}
+.modal-actions .cancel{background:var(--bg3);color:var(--text-dim)}
+.modal-actions .cancel:hover{background:var(--card-hover)}
+.modal-actions .confirm{background:var(--accent);color:#fff}
+.modal-actions .confirm:hover{background:#6baaff}
+.modal-actions .confirm:disabled{opacity:.5;cursor:not-allowed}
+
+.preview-modal{max-width:90vw;max-height:90vh;padding:0;overflow:hidden;background:transparent;border:none;position:relative}
+.preview-modal img{max-width:90vw;max-height:85vh;object-fit:contain;border-radius:12px;display:block}
+.preview-close{position:absolute;top:-40px;right:0;width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,.6);border:none;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s;z-index:10}
+.preview-close:hover{background:rgba(0,0,0,.8)}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(100px);padding:14px 24px;border-radius:12px;font-size:13px;font-weight:500;z-index:2000;transition:transform .3s cubic-bezier(.4,0,.2,1);box-shadow:0 8px 32px rgba(0,0,0,.4)}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.toast.success{background:var(--success);color:#fff}
+.toast.error{background:var(--danger);color:#fff}
+.toast.info{background:var(--accent);color:#fff}
+
+.empty{text-align:center;padding:80px 20px}
+.empty .icon{font-size:48px;margin-bottom:16px;opacity:.5}
+.empty h3{font-size:18px;color:var(--text-dim);margin-bottom:8px}
+.empty p{font-size:13px;color:var(--text-faint)}
+
+.loading{display:flex;align-items:center;justify-content:center;padding:60px;grid-column:1/-1}
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+@media(max-width:768px){
+  .topbar{flex-wrap:wrap;padding:12px 16px}
+  .search{order:3;max-width:100%;flex-basis:100%}
+  .main{padding:16px}
+  .grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-icon">&#127912;</div>
+    <div class="logo-text">
+      <h1>Codex Dream Skin</h1>
+      <p>主题管理面板</p>
+    </div>
+  </div>
+  <div class="search">
+    <span class="icon">&#128269;</span>
+    <input type="text" id="searchInput" placeholder="搜索主题..." />
+  </div>
+  <div class="badge">
+    <div class="dot" id="skinDot"></div>
+    <div>
+      <div class="label">当前主题</div>
+      <div class="value" id="activeTheme">加载中...</div>
+    </div>
+  </div>
+  <div class="badge" id="cdpBadge" title="Codex 调试端口连接状态">
+    <div class="dot" id="cdpDot" style="background:#666"></div>
+    <div>
+      <div class="label">Codex 连接</div>
+      <div class="value" id="cdpStatus">检查中...</div>
+    </div>
+    <button class="cdp-reconnect-btn" id="cdpReconnectBtn" style="display:none;margin-left:10px;padding:6px 12px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:11px;cursor:pointer;font-weight:600" onclick="restartCodexAndConnect()">重启并连接</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="section-head">
+    <h2>所有主题</h2>
+    <span class="count" id="themeCount">0 个主题</span>
+  </div>
+  <div id="themeGrid" class="grid">
+    <div class="loading"><div class="spinner"></div></div>
+  </div>
+
+  <div class="section-head" style="margin-top:32px">
+    <h2>动态效果</h2>
+    <span class="count" id="effectStatus">未启用</span>
+  </div>
+  <div class="effect-bar">
+    <button class="effect-btn active" data-effect="none" onclick="setEffect('none')">&#128683; 无</button>
+    <button class="effect-btn" data-effect="rain" onclick="setEffect('rain')">&#127783;&#65039; 雨滴</button>
+    <button class="effect-btn" data-effect="particles" onclick="setEffect('particles')">&#10024; 粒子</button>
+    <button class="effect-btn" data-effect="snow" onclick="setEffect('snow')">&#10052;&#65039; 雪花</button>
+    <button class="effect-btn" data-effect="gradient-shift" onclick="setEffect('gradient-shift')">&#127752; 渐变流动</button>
+    <button class="effect-btn" data-effect="kenburns" onclick="setEffect('kenburns')">&#128264; 缓慢缩放</button>
+  </div>
+
+  <div class="section-head" style="margin-top:32px">
+    <h2>效果库</h2>
+    <div style="display:flex;gap:10px;align-items:center">
+      <span class="count" id="effectLibCount">0 个效果</span>
+      <button class="action-btn primary" style="padding:8px 16px;font-size:12px" onclick="openEffectEditor()">&#10010; 新建效果</button>
+    </div>
+  </div>
+  <div id="effectGrid" class="effect-grid">
+    <div class="loading"><div class="spinner"></div></div>
+  </div>
+
+  <div class="actions">
+    <button class="action-btn primary" onclick="openCreateModal()">&#10024; 从照片创建主题</button>
+    <button class="action-btn" onclick="openBgModal()">&#128444; 更换当前背景</button>
+    <button class="action-btn" onclick="openThemesDir()">&#128193; 打开主题目录</button>
+    <button class="action-btn" onclick="refreshThemes()">&#128260; 刷新列表</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="createModal">
+  <div class="modal">
+    <h3>从照片创建主题</h3>
+    <input type="text" id="themeNameInput" placeholder="输入主题名称" value="我的主题" />
+    <div class="drop-zone" id="createDropZone">
+      <div class="icon">&#128247;</div>
+      <p>点击选择图片，或拖拽图片到此处</p>
+      <p style="font-size:11px;margin-top:4px">支持 JPG / PNG / WebP / GIF / BMP</p>
+      <div class="filename" id="createFileName"></div>
+    </div>
+    <input type="file" id="createFileInput" accept="image/*" style="display:none" />
+    <div class="modal-actions">
+      <button class="cancel" onclick="closeModal('createModal')">取消</button>
+      <button class="confirm" id="createConfirmBtn" onclick="submitCreate()" disabled>创建主题</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="bgModal">
+  <div class="modal">
+    <h3>更换当前背景</h3>
+    <div class="drop-zone" id="bgDropZone">
+      <div class="icon">&#128444;</div>
+      <p>点击选择新的背景图片，或拖拽到此处</p>
+      <div class="filename" id="bgFileName"></div>
+    </div>
+    <input type="file" id="bgFileInput" accept="image/*" style="display:none" />
+    <div class="modal-actions">
+      <button class="cancel" onclick="closeModal('bgModal')">取消</button>
+      <button class="confirm" id="bgConfirmBtn" onclick="submitBg()" disabled>应用背景</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="previewModal" onclick="closeModal('previewModal')">
+  <div class="preview-modal">
+    <button class="preview-close" onclick="closeModal('previewModal')">&#10005;</button>
+    <img id="previewImage" src="" alt="preview" />
+  </div>
+</div>
+
+<div class="modal-overlay" id="effectEditorModal">
+  <div class="modal effect-editor-modal">
+    <h3 id="effectEditorTitle">编辑效果</h3>
+    <div class="effect-editor-layout">
+      <div class="effect-editor-form">
+        <label class="field-label">名称</label>
+        <input type="text" id="effName" placeholder="效果名称" />
+        <label class="field-label">图标 (emoji)</label>
+        <input type="text" id="effIcon" placeholder="🌧️" style="width:80px" />
+        <label class="field-label">类型</label>
+        <select id="effType" onchange="onEffectTypeChange()">
+          <option value="rain">🌧️ 雨滴</option>
+          <option value="particles">✨ 粒子</option>
+          <option value="snow">❄️ 雪花</option>
+          <option value="fog">🌫️ 雾</option>
+          <option value="stars">🌌 星空</option>
+          <option value="matrix">💚 数字雨</option>
+        </select>
+        <label class="field-label">描述</label>
+        <input type="text" id="effDesc" placeholder="简短描述" />
+        <div id="effParams" class="eff-params-container"></div>
+      </div>
+      <div class="effect-editor-preview">
+        <label class="field-label">实时预览</label>
+        <canvas id="effPreviewCanvas" width="320" height="240"></canvas>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="cancel" onclick="closeModal('effectEditorModal')">取消</button>
+      <button class="confirm" id="effSaveBtn" onclick="saveEffect()">保存效果</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+var themes = [];
+var createFile = null;
+var bgFile = null;
+
+function api(path, opts) {
+  opts = opts || {};
+  opts.headers = opts.headers || {'Content-Type':'application/json'};
+  // Support timeout via AbortController
+  var controller = null;
+  if (opts.timeout) {
+    controller = new AbortController();
+    opts.signal = controller.signal;
+    setTimeout(function() { controller.abort(); }, opts.timeout);
+  }
+  return fetch(path, opts).then(function(r){ return r.json(); });
+}
+
+function toast(msg, type) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + (type||'info') + ' show';
+  setTimeout(function(){ t.classList.remove('show'); }, 3000);
+}
+
+function escapeHtml(s) {
+  var d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function loadThemes() {
+  var grid = document.getElementById('themeGrid');
+  grid.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  var q = document.getElementById('searchInput').value;
+  api('/api/themes?q=' + encodeURIComponent(q)).then(function(data){
+    themes = data.themes;
+    // Only show active theme name when CDP is actually connected
+    document.getElementById('activeTheme').textContent = cdpConnected ? data.active : '未激活';
+    document.getElementById('activeTheme').style.color = cdpConnected ? '' : '#f87171';
+    document.getElementById('themeCount').textContent = themes.length + ' 个主题';
+    var dot = document.getElementById('skinDot');
+    dot.className = 'dot' + (cdpConnected ? '' : ' off');
+    renderThemes();
+  }).catch(function(e){
+    grid.innerHTML = '<div class="empty"><div class="icon">&#9888;&#65039;</div><h3>加载失败</h3><p>' + escapeHtml(e.message) + '</p></div>';
+  });
+}
+
+function renderThemes() {
+  var grid = document.getElementById('themeGrid');
+  if (themes.length === 0) {
+    grid.innerHTML = '<div class="empty"><div class="icon">&#127912;</div><h3>还没有主题</h3><p>点击下方「从照片创建主题」开始</p></div>';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < themes.length; i++) {
+    var t = themes[i];
+    var nameEsc = escapeHtml(t.name);
+    var idEsc = escapeHtml(t.id);
+    // Only show "使用中" when CDP is actually connected — otherwise Codex isn't running
+    // and the skin isn't injected, even if the theme file exists in active-theme.
+    var trulyActive = t.isActive && cdpConnected;
+    var activeCls = trulyActive ? ' active' : '';
+    var imgHtml = t.hasImage
+      ? '<img class="card-img" src="/api/preview/' + encodeURIComponent(t.id) + '" alt="' + nameEsc + '" loading="lazy" />'
+      : '<div class="card-img-placeholder">无预览图</div>';
+    var activeTag = trulyActive ? '<span class="active-tag">使用中</span>' : '';
+    var applyBtnText = trulyActive ? '&#10003; 当前使用中' : '&#10003; 应用此主题';
+    var previewBtn = t.hasImage
+      ? '<button class="overlay-btn ghost" onclick="event.stopPropagation();previewTheme(\'' + idEsc + '\')">&#128269; 大图预览</button>'
+      : '';
+    var deleteBtn = !trulyActive
+      ? '<button class="overlay-btn danger" onclick="event.stopPropagation();deleteTheme(\'' + idEsc + '\',\'' + nameEsc + '\')">&#128465; 删除主题</button>'
+      : '';
+    var metaParts = [];
+    if (t.imageSize) metaParts.push('<span>' + escapeHtml(t.imageSize) + '</span>');
+    metaParts.push('<span>' + escapeHtml(t.created) + '</span>');
+    var metaHtml = metaParts.join('<span class="sep"></span>');
+
+    html += '<div class="card' + activeCls + '" data-id="' + idEsc + '">'
+      + imgHtml
+      + '<div class="card-overlay">'
+      + '<button class="overlay-btn primary" onclick="event.stopPropagation();applyTheme(\'' + idEsc + '\')">' + applyBtnText + '</button>'
+      + previewBtn
+      + deleteBtn
+      + '</div>'
+      + '<div class="card-body">'
+      + '<div class="card-name">' + nameEsc + activeTag + '</div>'
+      + '<div class="card-meta">' + metaHtml + '</div>'
+      + '</div></div>';
+  }
+  grid.innerHTML = html;
+}
+
+function refreshThemes() {
+  loadThemes();
+  toast('列表已刷新', 'info');
+}
+
+function applyTheme(id) {
+  var t = null;
+  for (var i = 0; i < themes.length; i++) { if (themes[i].id === id) { t = themes[i]; break; } }
+  if (!t) return;
+  if (t.isActive && cdpConnected) { toast('已经是当前主题', 'info'); return; }
+  if (!cdpConnected) {
+    if (!confirm('Codex 调试端口未连接，需要重启 Codex 才能应用主题。\n\n将自动关闭 Codex → 用调试端口重新打开 → 应用主题「' + t.name + '」\n\n约需 15-30 秒。请确保没有未保存的工作。\n\n是否继续？')) return;
+    toast('正在重启 Codex 并应用主题...', 'info');
+    restartCodexAndConnect(function() {
+      // After connected, apply the theme
+      setTimeout(function() {
+        api('/api/themes/apply', { method:'POST', body: JSON.stringify({id:id}) }).then(function(r){
+          if (r.ok) {
+            toast(r.warning || ('已切换到「' + t.name + '」'), r.warning ? 'info' : 'success');
+            loadThemes();
+          } else {
+            toast('切换失败：' + r.error, 'error');
+          }
+        }).catch(function(e){ toast('切换失败：' + e.message, 'error'); });
+      }, 2000); // wait a bit for Codex to fully load
+    });
+    return;
+  }
+  if (!confirm('确认切换到主题「' + t.name + '」？')) return;
+  toast('正在应用...', 'info');
+  api('/api/themes/apply', { method:'POST', body: JSON.stringify({id:id}) }).then(function(r){
+    if (r.ok) {
+      toast(r.warning || ('已切换到「' + t.name + '」'), r.warning ? 'info' : 'success');
+      loadThemes();
+    } else {
+      toast('切换失败：' + r.error, 'error');
+    }
+  }).catch(function(e){ toast('切换失败：' + e.message, 'error'); });
+}
+
+function deleteTheme(id, name) {
+  if (!confirm('确认删除主题「' + name + '」？此操作不可撤销。')) return;
+  api('/api/themes/delete', { method:'POST', body: JSON.stringify({id:id}) }).then(function(r){
+    if (r.ok) { toast('已删除「' + name + '」', 'success'); loadThemes(); }
+    else { toast('删除失败：' + r.error, 'error'); }
+  }).catch(function(e){ toast('删除失败：' + e.message, 'error'); });
+}
+
+function previewTheme(id) {
+  document.getElementById('previewImage').src = '/api/preview/' + encodeURIComponent(id);
+  document.getElementById('previewModal').classList.add('show');
+}
+
+function openCreateModal() {
+  createFile = null;
+  document.getElementById('createFileName').textContent = '';
+  document.getElementById('createConfirmBtn').disabled = true;
+  document.getElementById('createModal').classList.add('show');
+}
+
+function openBgModal() {
+  bgFile = null;
+  document.getElementById('bgFileName').textContent = '';
+  document.getElementById('bgConfirmBtn').disabled = true;
+  document.getElementById('bgModal').classList.add('show');
+}
+
+function setupFileInput(inputId, dropZoneId, fileNameId, callback) {
+  var input = document.getElementById(inputId);
+  var zone = document.getElementById(dropZoneId);
+  var nameEl = document.getElementById(fileNameId);
+  zone.addEventListener('click', function(){ input.click(); });
+  input.addEventListener('change', function(){
+    if (input.files[0]) { callback(input.files[0]); nameEl.textContent = '\ud83d\udcce ' + input.files[0].name; }
+  });
+  zone.addEventListener('dragover', function(e){ e.preventDefault(); zone.classList.add('drag'); });
+  zone.addEventListener('dragleave', function(){ zone.classList.remove('drag'); });
+  zone.addEventListener('drop', function(e){
+    e.preventDefault(); zone.classList.remove('drag');
+    if (e.dataTransfer.files[0]) { callback(e.dataTransfer.files[0]); nameEl.textContent = '\ud83d\udcce ' + e.dataTransfer.files[0].name; }
+  });
+}
+
+setupFileInput('createFileInput', 'createDropZone', 'createFileName', function(f){
+  createFile = f; document.getElementById('createConfirmBtn').disabled = false;
+});
+setupFileInput('bgFileInput', 'bgDropZone', 'bgFileName', function(f){
+  bgFile = f; document.getElementById('bgConfirmBtn').disabled = false;
+});
+
+function fileToBase64(file) {
+  return new Promise(function(resolve, reject){
+    var r = new FileReader();
+    r.onload = function(){ resolve(r.result.split(',')[1]); };
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+function submitCreate() {
+  var name = document.getElementById('themeNameInput').value.trim();
+  if (!name) { toast('请输入主题名称', 'error'); return; }
+  if (!createFile) { toast('请选择图片', 'error'); return; }
+  var btn = document.getElementById('createConfirmBtn');
+  btn.disabled = true; btn.textContent = '创建中...';
+  fileToBase64(createFile).then(function(imageData){
+    return api('/api/themes/create', { method:'POST', body: JSON.stringify({name:name, imageData:imageData, imageType:createFile.type}) });
+  }).then(function(r){
+    if (r.ok) {
+      toast('主题「' + name + '」已创建', 'success');
+      closeModal('createModal');
+      loadThemes();
+      if (confirm('主题「' + name + '」已创建。是否立即应用？')) {
+        applyTheme(r.id);
+      }
+    } else { toast('创建失败：' + r.error, 'error'); }
+  }).catch(function(e){ toast('创建失败：' + e.message, 'error'); })
+  .finally(function(){ btn.disabled = false; btn.textContent = '创建主题'; });
+}
+
+function submitBg() {
+  if (!bgFile) { toast('请选择图片', 'error'); return; }
+  var btn = document.getElementById('bgConfirmBtn');
+  btn.disabled = true; btn.textContent = '应用中...';
+  fileToBase64(bgFile).then(function(imageData){
+    return api('/api/background', { method:'POST', body: JSON.stringify({imageData:imageData, imageType:bgFile.type}) });
+  }).then(function(r){
+    if (r.ok) { toast('背景已更新', 'success'); closeModal('bgModal'); loadThemes(); }
+    else { toast('更换失败：' + r.error, 'error'); }
+  }).catch(function(e){ toast('更换失败：' + e.message, 'error'); })
+  .finally(function(){ btn.disabled = false; btn.textContent = '应用背景'; });
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+function openThemesDir() {
+  fetch('/api/open-dir').catch(function(){});
+  toast('正在打开主题目录...', 'info');
+}
+
+var currentEffect = 'none';
+var effectChanging = false;
+var effectLabelMap = { none: '未启用', rain: '雨滴', particles: '粒子', snow: '雪花', 'gradient-shift': '渐变流动', kenburns: '缓慢缩放' };
+
+/** 功能：仅在服务端验收成功后刷新效果选择状态。入参：effect、可选标签。返回：无。边界：效果库的自定义效果会清除快捷按钮选择。 */
+function renderCurrentEffect(effect, label) {
+  currentEffect = effect || 'none';
+  var btns = document.querySelectorAll('.effect-btn');
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].classList.toggle('active', btns[i].getAttribute('data-effect') === currentEffect);
+  }
+  document.getElementById('effectStatus').textContent = label || effectLabelMap[currentEffect] || currentEffect;
+}
+
+/** 功能：加载已通过验收并保存的效果状态。入参：无。返回：无。边界：接口不可用时保留当前界面状态。 */
+function loadCurrentEffect() {
+  api('/api/effect/current').then(function(result) {
+    if (result.ok) renderCurrentEffect(result.effect, result.name || effectLabelMap[result.effect]);
+  }).catch(function() {});
+}
+
+function setEffect(effect) {
+  if (effectChanging) return;
+  effectChanging = true;
+  var btns = document.querySelectorAll('.effect-btn');
+  for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
+  toast('正在应用效果...', 'info');
+  api('/api/effect', { method: 'POST', body: JSON.stringify({ effect: effect }) }).then(function(r) {
+    if (r.ok) {
+      renderCurrentEffect(r.effect, effectLabelMap[r.effect]);
+      toast(r.effect === 'none' ? '动态效果已关闭' : ('已启用：' + (effectLabelMap[r.effect] || r.effect)), 'success');
+    } else {
+      toast('应用失败：' + (r.error || '未知错误'), 'error');
+    }
+  }).catch(function(e) {
+    toast('应用失败：' + e.message, 'error');
+  }).finally(function() {
+    effectChanging = false;
+    for (var i = 0; i < btns.length; i++) btns[i].disabled = false;
+  });
+}
+
+/* ── Effect Library ──────────────────────────────────── */
+var EFFECT_PARAMS = {
+  rain: [
+    { key: 'intensity', label: '雨量', min: 1, max: 10, step: 1, default: 5 },
+    { key: 'speed', label: '下落速度', min: 1, max: 10, step: 1, default: 5 },
+    { key: 'opacity', label: '不透明度', min: 0.1, max: 1, step: 0.05, default: 0.6 },
+    { key: 'angle', label: '倾斜角度', min: 0, max: 30, step: 1, default: 8 },
+    { key: 'wind', label: '风力', min: 0, max: 3, step: 0.1, default: 0.5 },
+    { key: 'depthLayers', label: '深度层数', min: 1, max: 5, step: 1, default: 3 },
+    { key: 'splash', label: '溅水效果', type: 'check', default: true },
+    { key: 'splashIntensity', label: '溅水强度', min: 0.1, max: 1.5, step: 0.1, default: 0.6 },
+    { key: 'glow', label: '发光效果', type: 'check', default: true },
+    { key: 'glowIntensity', label: '发光强度', min: 0.1, max: 1, step: 0.05, default: 0.35 },
+    { key: 'lightning', label: '闪电', type: 'check', default: false },
+    { key: 'wobble', label: '雨滴摆动', type: 'check', default: true },
+  ],
+  particles: [
+    { key: 'count', label: '粒子数量', min: 10, max: 300, step: 10, default: 60 },
+    { key: 'speed', label: '漂浮速度', min: 0.1, max: 2, step: 0.1, default: 0.5 },
+    { key: 'opacity', label: '不透明度', min: 0.1, max: 1, step: 0.05, default: 0.5 },
+    { key: 'sizeMin', label: '最小尺寸', min: 0.5, max: 5, step: 0.5, default: 1 },
+    { key: 'sizeMax', label: '最大尺寸', min: 1, max: 8, step: 0.5, default: 3 },
+    { key: 'glow', label: '发光', type: 'check', default: true },
+    { key: 'glowIntensity', label: '发光强度', min: 0.1, max: 1, step: 0.05, default: 0.4 },
+    { key: 'drift', label: '漂移幅度', min: 0, max: 1, step: 0.1, default: 0.3 },
+  ],
+  snow: [
+    { key: 'count', label: '雪花数量', min: 20, max: 300, step: 10, default: 80 },
+    { key: 'speed', label: '下落速度', min: 0.3, max: 3, step: 0.1, default: 1 },
+    { key: 'opacity', label: '不透明度', min: 0.1, max: 1, step: 0.05, default: 0.7 },
+    { key: 'sizeMin', label: '最小尺寸', min: 0.5, max: 5, step: 0.5, default: 1 },
+    { key: 'sizeMax', label: '最大尺寸', min: 1, max: 8, step: 0.5, default: 4 },
+    { key: 'wind', label: '风力', min: 0, max: 2, step: 0.1, default: 0.3 },
+    { key: 'swing', label: '摇摆幅度', min: 0, max: 2, step: 0.1, default: 0.5 },
+    { key: 'glow', label: '发光', type: 'check', default: true },
+  ],
+  fog: [
+    { key: 'layers', label: '雾气层数', min: 1, max: 5, step: 1, default: 3 },
+    { key: 'speed', label: '流动速度', min: 0.05, max: 1, step: 0.05, default: 0.15 },
+    { key: 'opacity', label: '不透明度', min: 0.1, max: 0.8, step: 0.05, default: 0.3 },
+    { key: 'density', label: '浓度', min: 0.1, max: 1, step: 0.1, default: 0.5 },
+  ],
+  stars: [
+    { key: 'count', label: '星星数量', min: 30, max: 400, step: 10, default: 120 },
+    { key: 'twinkleSpeed', label: '闪烁速度', min: 0.3, max: 3, step: 0.1, default: 1 },
+    { key: 'opacity', label: '不透明度', min: 0.1, max: 1, step: 0.05, default: 0.8 },
+    { key: 'sizeMin', label: '最小尺寸', min: 0.3, max: 3, step: 0.1, default: 0.5 },
+    { key: 'sizeMax', label: '最大尺寸', min: 1, max: 5, step: 0.5, default: 2 },
+    { key: 'shootingStars', label: '流星', type: 'check', default: true },
+    { key: 'shootingFrequency', label: '流星频率', min: 0.001, max: 0.02, step: 0.001, default: 0.003 },
+    { key: 'glow', label: '发光', type: 'check', default: true },
+  ],
+  matrix: [
+    { key: 'columns', label: '列数密度', min: 20, max: 80, step: 5, default: 40 },
+    { key: 'speed', label: '下落速度', min: 1, max: 8, step: 0.5, default: 3 },
+    { key: 'opacity', label: '不透明度', min: 0.1, max: 1, step: 0.05, default: 0.6 },
+    { key: 'fontSize', label: '字体大小', min: 10, max: 24, step: 1, default: 14 },
+    { key: 'trailLength', label: '拖尾长度', min: 5, max: 40, step: 1, default: 20 },
+    { key: 'glow', label: '发光', type: 'check', default: true },
+    { key: 'glowIntensity', label: '发光强度', min: 0.1, max: 1, step: 0.05, default: 0.5 },
+  ],
+  road: [
+    { key: 'count', label: '层次数量', min: 8, max: 120, step: 2, default: 36 },
+    { key: 'speed', label: '推进速度', min: 0.1, max: 2, step: 0.1, default: 0.7 },
+    { key: 'opacity', label: '不透明度', min: 0.1, max: 1, step: 0.05, default: 0.5 },
+  ],
+};
+
+var EFFECT_ICONS = { rain: '🌧️', particles: '✨', snow: '❄️', fog: '🌫️', stars: '🌌', matrix: '💚', road: '🏎️' };
+var effects = [];
+var editingEffectId = null;
+var previewAnimId = null;
+var previewState = {};
+
+function loadEffects() {
+  var grid = document.getElementById('effectGrid');
+  grid.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  api('/api/effects').then(function(data) {
+    effects = data.effects || [];
+    document.getElementById('effectLibCount').textContent = effects.length + ' 个效果';
+    renderEffects();
+  }).catch(function(e) {
+    grid.innerHTML = '<div class="empty"><div class="icon">⚠️</div><h3>加载失败</h3><p>' + e.message + '</p></div>';
+  });
+}
+
+function renderEffects() {
+  var grid = document.getElementById('effectGrid');
+  if (effects.length === 0) {
+    grid.innerHTML = '<div class="empty"><div class="icon">🎨</div><h3>还没有效果</h3><p>点击「新建效果」开始创建</p></div>';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < effects.length; i++) {
+    var e = effects[i];
+    var icon = escapeHtml(e.icon || EFFECT_ICONS[e.type] || '✨');
+    var typeEsc = escapeHtml(e.type || '');
+    var effectIdEsc = escapeHtml(e.id || '');
+    html += '<div class="effect-card">'
+      + '<div class="eff-icon">' + icon + '</div>'
+      + '<div class="eff-name">' + escapeHtml(e.name) + '</div>'
+      + '<div class="eff-desc">' + escapeHtml(e.description || '') + '</div>'
+      + '<span class="eff-type">' + typeEsc + '</span>'
+      + '<div class="eff-actions">'
+      + '<button class="eff-btn apply" onclick="applyEffectLib(\'' + effectIdEsc + '\')">应用</button>'
+      + '<button class="eff-btn edit" onclick="openEffectEditor(\'' + effectIdEsc + '\')">编辑</button>'
+      + '<button class="eff-btn del" onclick="deleteEffectLib(\'' + effectIdEsc + '\',\'' + escapeHtml(e.name) + '\')">删除</button>'
+      + '</div></div>';
+  }
+  grid.innerHTML = html;
+}
+
+function openEffectEditor(id) {
+  editingEffectId = id || null;
+  var title = document.getElementById('effectEditorTitle');
+  if (id) {
+    var e = null;
+    for (var i = 0; i < effects.length; i++) { if (effects[i].id === id) { e = effects[i]; break; } }
+    if (!e) return;
+    title.textContent = '编辑效果：' + e.name;
+    document.getElementById('effName').value = e.name;
+    document.getElementById('effIcon').value = e.icon || EFFECT_ICONS[e.type] || '✨';
+    document.getElementById('effType').value = e.type;
+    document.getElementById('effDesc').value = e.description || '';
+    renderParamSliders(e.type, e.params || {});
+  } else {
+    title.textContent = '新建效果';
+    document.getElementById('effName').value = '我的效果';
+    document.getElementById('effIcon').value = '🌧️';
+    document.getElementById('effType').value = 'rain';
+    document.getElementById('effDesc').value = '';
+    renderParamSliders('rain', {});
+  }
+  document.getElementById('effectEditorModal').classList.add('show');
+  startPreview();
+}
+
+function onEffectTypeChange() {
+  var type = document.getElementById('effType').value;
+  document.getElementById('effIcon').value = EFFECT_ICONS[type] || '✨';
+  renderParamSliders(type, {});
+}
+
+function renderParamSliders(type, currentParams) {
+  var container = document.getElementById('effParams');
+  var defs = EFFECT_PARAMS[type] || [];
+  var html = '';
+  for (var i = 0; i < defs.length; i++) {
+    var p = defs[i];
+    var val = currentParams[p.key] !== undefined ? currentParams[p.key] : p.default;
+    if (p.type === 'check') {
+      html += '<div class="param-row"><label class="param-check"><input type="checkbox" data-param="' + p.key + '"' + (val ? ' checked' : '') + '> ' + p.label + '</label></div>';
+    } else {
+      html += '<div class="param-row"><label>' + p.label + ' <span data-val="' + p.key + '">' + val + '</span></label>'
+        + '<input type="range" data-param="' + p.key + '" min="' + p.min + '" max="' + p.max + '" step="' + p.step + '" value="' + val + '" oninput="this.previousElementSibling.querySelector(\'[data-val]\').textContent=this.value;updatePreview()">'
+        + '</div>';
+    }
+  }
+  container.innerHTML = html;
+  // Add change listeners for checkboxes
+  var checks = container.querySelectorAll('input[type=checkbox]');
+  for (var j = 0; j < checks.length; j++) {
+    checks[j].addEventListener('change', updatePreview);
+  }
+}
+
+function getEditorValues() {
+  var type = document.getElementById('effType').value;
+  var defs = EFFECT_PARAMS[type] || [];
+  var params = {};
+  for (var i = 0; i < defs.length; i++) {
+    var p = defs[i];
+    var el = document.querySelector('[data-param="' + p.key + '"]');
+    if (el) {
+      params[p.key] = p.type === 'check' ? el.checked : parseFloat(el.value);
+    } else {
+      params[p.key] = p.default;
+    }
+  }
+  var name = document.getElementById('effName').value.trim();
+  var id = editingEffectId || ('custom-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8));
+  return {
+    id: id,
+    name: name || '未命名效果',
+    type: type,
+    icon: document.getElementById('effIcon').value.trim() || EFFECT_ICONS[type] || '✨',
+    description: document.getElementById('effDesc').value.trim(),
+    params: params,
+  };
+}
+
+function saveEffect() {
+  var effect = getEditorValues();
+  var url = editingEffectId ? '/api/effects/update' : '/api/effects/create';
+  api(url, { method: 'POST', body: JSON.stringify(effect) }).then(function(r) {
+    if (r.ok) {
+      toast(editingEffectId ? '效果已更新' : '效果已创建', 'success');
+      closeModal('effectEditorModal');
+      stopPreview();
+      loadEffects();
+    } else {
+      toast('保存失败：' + r.error, 'error');
+    }
+  }).catch(function(e) { toast('保存失败：' + e.message, 'error'); });
+}
+
+function deleteEffectLib(id, name) {
+  if (!confirm('确认删除效果「' + name + '」？')) return;
+  api('/api/effects/delete', { method: 'POST', body: JSON.stringify({ id: id }) }).then(function(r) {
+    if (r.ok) { toast('已删除', 'success'); loadEffects(); }
+    else { toast('删除失败：' + r.error, 'error'); }
+  }).catch(function(e) { toast('删除失败：' + e.message, 'error'); });
+}
+
+function applyEffectLib(id) {
+  var e = null;
+  for (var i = 0; i < effects.length; i++) { if (effects[i].id === id) { e = effects[i]; break; } }
+  if (!e) return;
+  if (!cdpConnected) {
+    if (!confirm('Codex 调试端口未连接，需要重启 Codex 才能应用效果。\n\n将自动关闭 Codex → 用调试端口重新打开 → 应用效果「' + e.name + '」\n\n约需 15-30 秒。是否继续？')) return;
+    toast('正在重启 Codex 并应用效果...', 'info');
+    restartCodexAndConnect(function() {
+      setTimeout(function() {
+        api('/api/effects/apply', { method: 'POST', body: JSON.stringify({ id: id }) }).then(function(r) {
+          if (r.ok) {
+            toast('已应用：' + r.effect, 'success');
+            renderCurrentEffect(r.type, r.name || e.name);
+          } else {
+            toast('应用失败：' + r.error, 'error');
+          }
+        }).catch(function(e) { toast('应用失败：' + e.message, 'error'); });
+      }, 2000);
+    });
+    return;
+  }
+  if (!confirm('确认应用效果「' + e.name + '」到 Codex？')) return;
+  toast('正在应用...', 'info');
+  api('/api/effects/apply', { method: 'POST', body: JSON.stringify({ id: id }) }).then(function(r) {
+    if (r.ok) {
+      toast('已应用：' + r.effect, 'success');
+      renderCurrentEffect(r.type, r.name || e.name);
+    } else {
+      toast('应用失败：' + r.error, 'error');
+    }
+  }).catch(function(e) { toast('应用失败：' + e.message, 'error'); });
+}
+
+/* ── Live Preview (simplified) ──────────────────────── */
+function startPreview() {
+  stopPreview();
+  var canvas = document.getElementById('effPreviewCanvas');
+  var ctx = canvas.getContext('2d');
+  var W = canvas.width, H = canvas.height;
+  previewState = { drops: [], particles: [], frame: 0 };
+  function loop() {
+    var cfg = getEditorValues().params;
+    var type = document.getElementById('effType').value;
+    ctx.fillStyle = '#0f0f13';
+    ctx.fillRect(0, 0, W, H);
+    if (type === 'rain') drawRainPreview(ctx, W, H, cfg);
+    else if (type === 'particles') drawParticlesPreview(ctx, W, H, cfg);
+    else if (type === 'snow') drawSnowPreview(ctx, W, H, cfg);
+    else if (type === 'fog') drawFogPreview(ctx, W, H, cfg);
+    else if (type === 'stars') drawStarsPreview(ctx, W, H, cfg);
+    else if (type === 'matrix') drawMatrixPreview(ctx, W, H, cfg);
+    previewState.frame++;
+    previewAnimId = requestAnimationFrame(loop);
+  }
+  loop();
+}
+
+function stopPreview() {
+  if (previewAnimId) { cancelAnimationFrame(previewAnimId); previewAnimId = null; }
+}
+
+function updatePreview() { /* preview loop reads values live */ }
+
+function drawRainPreview(ctx, W, H, cfg) {
+  if (!previewState.drops.length || previewState.drops.length !== Math.floor((cfg.intensity || 5) * 3)) {
+    previewState.drops = [];
+    var n = Math.floor((cfg.intensity || 5) * 3);
+    for (var i = 0; i < n; i++) {
+      previewState.drops.push({ x: Math.random() * W, y: Math.random() * H, speed: 2 + (cfg.speed || 5) * 0.5 + Math.random() * 2, len: 8 + Math.random() * 15, op: 0.2 + Math.random() * 0.4 });
+    }
+  }
+  var angle = ((cfg.angle || 8) * Math.PI) / 180;
+  ctx.strokeStyle = 'rgba(174,194,224,0.6)';
+  ctx.lineWidth = 1;
+  for (var i = 0; i < previewState.drops.length; i++) {
+    var d = previewState.drops[i];
+    ctx.globalAlpha = d.op * (cfg.opacity || 0.6);
+    ctx.beginPath();
+    ctx.moveTo(d.x, d.y);
+    ctx.lineTo(d.x + Math.sin(angle) * d.len, d.y + Math.cos(angle) * d.len);
+    ctx.stroke();
+    d.x += Math.sin(angle) * d.speed + (cfg.wind || 0) * 0.3;
+    d.y += Math.cos(angle) * d.speed;
+    if (d.y > H) { d.y = -10; d.x = Math.random() * W; }
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawParticlesPreview(ctx, W, H, cfg) {
+  if (!previewState.particles.length || previewState.particles.length !== (cfg.count || 60) / 3) {
+    previewState.particles = [];
+    var n = Math.floor((cfg.count || 60) / 3);
+    for (var i = 0; i < n; i++) {
+      previewState.particles.push({ x: Math.random() * W, y: Math.random() * H, vy: -(cfg.speed || 0.5) * 0.5, size: (cfg.sizeMin || 1) + Math.random() * ((cfg.sizeMax || 3) - (cfg.sizeMin || 1)), phase: Math.random() * Math.PI * 2 });
+    }
+  }
+  for (var i = 0; i < previewState.particles.length; i++) {
+    var p = previewState.particles[i];
+    p.phase += 0.02;
+    var alpha = (0.3 + Math.sin(p.phase) * 0.3) * (cfg.opacity || 0.5);
+    ctx.fillStyle = 'rgba(255,255,255,' + alpha + ')';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+    p.y += p.vy;
+    p.x += Math.sin(p.phase) * 0.3;
+    if (p.y < -5) { p.y = H + 5; p.x = Math.random() * W; }
+  }
+}
+
+function drawSnowPreview(ctx, W, H, cfg) {
+  if (!previewState.particles.length || previewState.particles.length !== (cfg.count || 80) / 3) {
+    previewState.particles = [];
+    var n = Math.floor((cfg.count || 80) / 3);
+    for (var i = 0; i < n; i++) {
+      previewState.particles.push({ x: Math.random() * W, y: Math.random() * H, speed: 0.3 + Math.random() * (cfg.speed || 1), size: (cfg.sizeMin || 1) + Math.random() * ((cfg.sizeMax || 4) - (cfg.sizeMin || 1)), phase: Math.random() * Math.PI * 2 });
+    }
+  }
+  for (var i = 0; i < previewState.particles.length; i++) {
+    var f = previewState.particles[i];
+    f.phase += 0.02;
+    ctx.fillStyle = 'rgba(255,255,255,' + (cfg.opacity || 0.7) + ')';
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, f.size, 0, Math.PI * 2);
+    ctx.fill();
+    f.x += Math.sin(f.phase) * (cfg.swing || 0.5) + (cfg.wind || 0) * 0.2;
+    f.y += f.speed;
+    if (f.y > H + 5) { f.y = -5; f.x = Math.random() * W; }
+  }
+}
+
+function drawFogPreview(ctx, W, H, cfg) {
+  var layers = cfg.layers || 3;
+  for (var i = 0; i < layers; i++) {
+    var x = ((previewState.frame * (cfg.speed || 0.15) * (1 + i * 0.5) + i * 150) % (W + 200)) - 100;
+    var y = H * (0.2 + i * 0.25);
+    var grad = ctx.createRadialGradient(x, y, 0, x, y, 120);
+    grad.addColorStop(0, 'rgba(200,210,220,' + ((cfg.opacity || 0.3) * (0.4 + i * 0.2) * (cfg.density || 0.5)) + ')');
+    grad.addColorStop(1, 'rgba(200,210,220,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x - 120, y - 80, 240, 160);
+  }
+}
+
+function drawStarsPreview(ctx, W, H, cfg) {
+  if (!previewState.particles.length || previewState.particles.length !== (cfg.count || 120) / 4) {
+    previewState.particles = [];
+    var n = Math.floor((cfg.count || 120) / 4);
+    for (var i = 0; i < n; i++) {
+      previewState.particles.push({ x: Math.random() * W, y: Math.random() * H, size: (cfg.sizeMin || 0.5) + Math.random() * ((cfg.sizeMax || 2) - (cfg.sizeMin || 0.5)), phase: Math.random() * Math.PI * 2, speed: 0.01 + Math.random() * 0.03 * (cfg.twinkleSpeed || 1) });
+    }
+  }
+  for (var i = 0; i < previewState.particles.length; i++) {
+    var s = previewState.particles[i];
+    s.phase += s.speed;
+    var alpha = (0.3 + Math.sin(s.phase) * 0.5) * (cfg.opacity || 0.8);
+    ctx.fillStyle = 'rgba(255,255,255,' + alpha + ')';
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawMatrixPreview(ctx, W, H, cfg) {
+  ctx.fillStyle = 'rgba(0,0,0,0.1)';
+  ctx.fillRect(0, 0, W, H);
+  var fontSize = cfg.fontSize || 14;
+  var cols = Math.floor(W / fontSize);
+  if (!previewState.drops.length || previewState.drops.length !== cols) {
+    previewState.drops = [];
+    for (var i = 0; i < cols; i++) { previewState.drops.push(Math.random() * H / fontSize); }
+  }
+  ctx.font = fontSize + 'px monospace';
+  var chars = '01アイウエオ';
+  for (var i = 0; i < cols; i++) {
+    var char = chars[Math.floor(Math.random() * chars.length)];
+    var y = previewState.drops[i] * fontSize;
+    ctx.fillStyle = 'rgba(0,255,70,' + (cfg.opacity || 0.6) + ')';
+    ctx.fillText(char, i * fontSize, y);
+    if (y > H && Math.random() > 0.975) previewState.drops[i] = 0;
+    previewState.drops[i] += (cfg.speed || 3) * 0.15;
+  }
+}
+
+loadEffects();
+loadCurrentEffect();
+
+/* ── CDP Connection Status (three-state) ──────────────── */
+var cdpConnected = false;
+var cdpRestarting = false;
+var codexStatus = 'unknown'; // not_running | running_no_cdp | connected
+function checkCdpStatus() {
+  if (cdpRestarting) return;
+  api('/api/health').then(function(r) {
+    var wasConnected = cdpConnected;
+    cdpConnected = r.cdpConnected;
+    codexStatus = r.status || 'unknown';
+    var dot = document.getElementById('cdpDot');
+    var status = document.getElementById('cdpStatus');
+    var badge = document.getElementById('cdpBadge');
+    var btn = document.getElementById('cdpReconnectBtn');
+
+    if (r.status === 'connected') {
+      dot.style.background = '#4ade80';
+      status.textContent = '已连接';
+      status.style.color = '#4ade80';
+      badge.title = 'Codex 已连接 (端口 ' + r.port + ')';
+      btn.style.display = 'none';
+    } else if (r.status === 'running_no_cdp') {
+      dot.style.background = '#facc15';
+      status.textContent = '运行中·需重启';
+      status.style.color = '#facc15';
+      badge.title = 'Codex 正在运行但未启用调试端口。点击「重启并连接」自动重启 Codex 以启用主题。';
+      btn.style.display = 'inline-block';
+      btn.textContent = '重启并连接';
+    } else {
+      // not_running
+      dot.style.background = '#6b7280';
+      status.textContent = '未运行';
+      status.style.color = '#9ca3af';
+      badge.title = 'Codex 未运行。点击「启动 Codex」打开 Codex 并自动应用主题。';
+      btn.style.display = 'inline-block';
+      btn.textContent = '启动 Codex';
+    }
+
+    if (wasConnected !== cdpConnected) {
+      if (themes.length > 0) renderThemes();
+      var activeEl = document.getElementById('activeTheme');
+      if (activeEl) {
+        if (cdpConnected) {
+          api('/api/themes').then(function(d) { activeEl.textContent = d.active; activeEl.style.color = ''; }).catch(function(){});
+        } else {
+          activeEl.textContent = '未激活';
+          activeEl.style.color = '#f87171';
+        }
+      }
+      var skinDot = document.getElementById('skinDot');
+      if (skinDot) skinDot.className = 'dot' + (cdpConnected ? '' : ' off');
+    }
+  }).catch(function() {
+    document.getElementById('cdpDot').style.background = '#666';
+    document.getElementById('cdpStatus').textContent = '未知';
+  });
+}
+
+function restartCodexAndConnect(afterConnectCallback) {
+  if (cdpRestarting) return;
+  var isStarting = codexStatus === 'not_running';
+  var msg = isStarting
+    ? '将通过启动器打开 Codex 并自动应用主题（约需 15-30 秒）。\n\n是否继续？'
+    : '将关闭当前 Codex 并用调试端口重新打开（约需 20-40 秒）。\n\n注意：请确保 Codex 中没有未保存的工作。\n\n是否继续？';
+  if (!confirm(msg)) return;
+  cdpRestarting = true;
+  var dot = document.getElementById('cdpDot');
+  var status = document.getElementById('cdpStatus');
+  var btn = document.getElementById('cdpReconnectBtn');
+  dot.style.background = '#facc15';
+  status.textContent = '准备中...';
+  status.style.color = '#facc15';
+  btn.style.display = 'none';
+  btn.disabled = true;
+  toast(isStarting ? '正在启动 Codex...' : '正在重启 Codex...', 'info');
+
+  // Progress messages while waiting for the synchronous restart endpoint
+  var progressSteps = ['关闭 Codex...', '启动 Codex...', '等待调试端口...', '应用主题...'];
+  var stepIdx = 0;
+  var progressTimer = setInterval(function() {
+    if (stepIdx < progressSteps.length) {
+      status.textContent = progressSteps[stepIdx];
+      stepIdx++;
+    }
+  }, 6000);
+
+  // The restart endpoint now waits for completion (20-60s)
+  api('/api/restart-codex', { method: 'POST', timeout: 90000 }).then(function(r) {
+    clearInterval(progressTimer);
+    cdpRestarting = false;
+    if (r.ok) {
+      cdpConnected = true;
+      codexStatus = 'connected';
+      dot.style.background = '#4ade80';
+      status.textContent = '已连接';
+      status.style.color = '#4ade80';
+      btn.textContent = '重启并连接';
+      btn.disabled = false;
+      btn.style.display = 'none';
+      toast('Codex 已连接，主题已就绪！', 'success');
+      loadThemes();
+      if (afterConnectCallback) afterConnectCallback();
+    } else {
+      dot.style.background = '#f87171';
+      status.textContent = '重启失败';
+      status.style.color = '#f87171';
+      btn.textContent = '重试';
+      btn.disabled = false;
+      btn.style.display = 'inline-block';
+      toast('重启失败：' + (r.error || '未知错误'), 'error');
+    }
+  }).catch(function(e) {
+    clearInterval(progressTimer);
+    cdpRestarting = false;
+    dot.style.background = '#f87171';
+    status.textContent = '请求超时';
+    status.style.color = '#f87171';
+    btn.textContent = '重试';
+    btn.disabled = false;
+    btn.style.display = 'inline-block';
+    // Even if request timed out, Codex might have started - do a quick check
+    setTimeout(checkCdpStatus, 3000);
+    toast('请求超时，但 Codex 可能已启动，正在重新检测...', 'warning');
+  });
+}
+
+checkCdpStatus();
+setInterval(checkCdpStatus, 10000);
+
+var searchTimer = null;
+document.getElementById('searchInput').addEventListener('input', function(){
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(function(){ loadThemes(); }, 300);
+});
+
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape') {
+    var overlays = document.querySelectorAll('.modal-overlay.show');
+    for (var i = 0; i < overlays.length; i++) { overlays[i].classList.remove('show'); }
+  }
+});
+
+loadThemes();
+</script>
+</body>
+</html>

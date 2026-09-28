@@ -1,0 +1,7 @@
+{
+  "workspace": "YOUR_WORKSPACE_FOLDER",
+  "dreamSkinPort": 9335,
+  "dreamSkinStateRoot": "YOUR_LOCALAPPDATA\\CodexDreamSkin",
+  "safeMode": true,
+  "version": "0.2.0"
+}
