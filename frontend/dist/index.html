@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0f1219" />
+    <title>Dream Skin 壁纸主题工作台</title>
+    <style>
+      /* 首屏暗色背景，避免加载时白屏闪烁 */
+      html,
+      body {
+        margin: 0;
+        background: #181a1f;
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-6DoIGchN.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-8f_JM-Lo.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      // Tauri 宿主注入两类入口，边界必须分清：
+      //   - 工作区请求（workspace.*）：走 JSONL 桥，交给 Rust 桥进程处理文件树；
+      //   - 模式切换（mode.switch）：属于进程管理，桥进程根本不认识这个方法，
+      //     必须直连宿主的 mode_switch 命令（由它调用切换脚本）。
+      (() => {
+        const tauriInternals = window.__TAURI_INTERNALS__;
+        if (tauriInternals && typeof tauriInternals.invoke === 'function') {
+          window.__codexFusionTransport__ = (request) =>
+            tauriInternals.invoke('workspace_request', { request });
+          window.__codexFusionThemeRequest__ = (method, path, body) =>
+            tauriInternals.invoke('theme_request', { method, path, body: body ?? null });
+          window.__codexFusionLaunchCodeCodex__ = () => tauriInternals.invoke('launch_code_codex');
+          window.__codexFusionModeSwitch__ = (target) =>
+            tauriInternals.invoke('mode_switch', { target });
+          window.__codexFusionEnsureDreamSkinMode__ = () =>
+            tauriInternals.invoke('ensure_dream_skin_mode');
+          window.__codexFusionLastSwitchOutcome__ = () =>
+            tauriInternals.invoke('last_switch_outcome');
+          window.__codexFusionCodeCodexHealth__ = () =>
+            tauriInternals.invoke('code_codex_health');
+        }
+      })();
+    </script>
+  </body>
+</html>
