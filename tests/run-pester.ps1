@@ -11,5 +11,6 @@ if ($r.FailedCount -gt 0) {
     ('FAIL: ' + $f.Describe + ' / ' + $f.Name) | Out-File -FilePath $resultPath -Append -Encoding utf8
     ('   ' + $f.FailureMessage) | Out-File -FilePath $resultPath -Append -Encoding utf8
   }
+  exit 1
 }
 

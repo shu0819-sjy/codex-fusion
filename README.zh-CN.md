@@ -42,6 +42,8 @@ copy ..\code-codex-upstream\target\release\workspace-service.exe ..\..\bin\fusio
 
 可选环境变量：`CODEX_FUSION_ROOT`、`CODEX_CODEX_PATH`、`CODEX_FUSION_BRIDGE`。
 
+首次运行时，宿主会自动创建配置中的 `dreamSkinStateRoot` 目录。托盘里的重启动作会等待 Codex 进程、CDP 端口和皮肤注入结果；失败会如实返回错误，不会先显示成功。
+
 ## 使用注意
 
 - 日常请从 **Codex Fusion** 启动，不要只点官方 Codex 图标（否则无皮肤）

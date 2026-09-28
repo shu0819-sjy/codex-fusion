@@ -36,4 +36,26 @@ jobs:
         with:
           workspaces: host/src-tauri
       - run: cargo check --locked
+      - run: cargo test --locked
+      - run: cargo clippy --all-targets --all-features --locked -- -D warnings
       - run: cargo fmt --check
+
+  dynamic-effects:
+    name: Dynamic effects engine tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node --test tests/dynamic-effects.test.mjs
+        working-directory: host/src-tauri
+
+  powershell:
+    name: PowerShell process-switch tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Pester suite
+        shell: pwsh
+        run: ./tests/run-pester.ps1

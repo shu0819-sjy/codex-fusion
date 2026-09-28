@@ -15,12 +15,7 @@ const DYNAMIC_EFFECTS_CSS: &str = include_str!("../assets/dynamic-effects.v5.css
 const DYNAMIC_EFFECTS_JS: &str = include_str!("../assets/dynamic-effects.v5.js");
 
 fn state_root() -> PathBuf {
-    let local = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| {
-        std::env::var("USERPROFILE")
-            .map(|u| format!("{u}\\AppData\\Local"))
-            .unwrap_or_else(|_| r"C:\ProgramData".into())
-    });
-    PathBuf::from(local).join("CodexDreamSkin")
+    crate::runtime_state_root()
 }
 fn state_path() -> PathBuf {
     state_root().join("state.json")
@@ -132,7 +127,7 @@ fn stop_owned_dream_skin_chatgpt(profile: &Path, port: u16) -> Result<String, St
 fn launch_codex(exe: &Path, port: u16, profile: &Path) -> Result<(), String> {
     fs::create_dir_all(profile).map_err(|e| e.to_string())?;
     let args = [
-        format!("--remote-debugging-address=127.0.0.1"),
+        "--remote-debugging-address=127.0.0.1".to_string(),
         format!("--remote-debugging-port={port}"),
         format!("--user-data-dir={}", profile.display()),
     ];
@@ -350,10 +345,8 @@ pub fn ensure_dream_skin_runtime(restart: bool) -> Result<Value, String> {
     let browser_for_inject = browser_id.clone();
     let should_inject_now = restart;
     let inject = if should_inject_now {
-        match inject_active_skin(port, Some(&browser_id)) {
-            Ok(v) => v,
-            Err(error) => json!({"ok":false,"error":error}),
-        }
+        inject_active_skin(port, Some(&browser_id))
+            .map_err(|error| format!("Codex 已启动但皮肤注入失败：{error}"))?
     } else {
         thread::spawn(move || {
             thread::sleep(Duration::from_secs(8));

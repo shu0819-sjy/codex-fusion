@@ -397,26 +397,6 @@ pub fn embedded_effects_js() -> &'static str {
     DYNAMIC_EFFECTS_JS
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn probes_live_cdp_if_present() {
-        match super::http_get_json(9335, "/json/version") {
-            Ok(v) => eprintln!("version_ok={v}"),
-            Err(e) => eprintln!("version_err={e}"),
-        }
-        match super::browser_id(9335) {
-            Ok(v) => eprintln!("browser_ok={v}"),
-            Err(e) => eprintln!("browser_err={e}"),
-        }
-        match super::list_app_targets(9335) {
-            Ok(v) => eprintln!("targets_ok={}", v.len()),
-            Err(e) => eprintln!("targets_err={e}"),
-        }
-        eprintln!("cdp_ready={}", super::cdp_ready(9335));
-    }
-}
-
 /// Evaluate an expression on every valid app:// Codex page target.
 pub fn evaluate_on_app_targets(
     port: u16,
@@ -462,4 +442,24 @@ pub fn evaluate_on_app_targets(
         ));
     }
     Ok(json!({"ok": true, "applied": results.len(), "results": results}))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn probes_live_cdp_if_present() {
+        match super::http_get_json(9335, "/json/version") {
+            Ok(v) => eprintln!("version_ok={v}"),
+            Err(e) => eprintln!("version_err={e}"),
+        }
+        match super::browser_id(9335) {
+            Ok(v) => eprintln!("browser_ok={v}"),
+            Err(e) => eprintln!("browser_err={e}"),
+        }
+        match super::list_app_targets(9335) {
+            Ok(v) => eprintln!("targets_ok={}", v.len()),
+            Err(e) => eprintln!("targets_err={e}"),
+        }
+        eprintln!("cdp_ready={}", super::cdp_ready(9335));
+    }
 }

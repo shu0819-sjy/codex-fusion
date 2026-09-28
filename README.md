@@ -55,6 +55,8 @@ Environment overrides (optional):
 | `CODEX_CODEX_PATH` | Path to `CodeCodex.exe` |
 | `CODEX_FUSION_BRIDGE` | Path to `fusion-bridge.exe` |
 
+On first run, the host creates the configured `dreamSkinStateRoot` directory if it does not exist. The tray restart action waits for the Codex process, CDP endpoint, and skin injection result; a failed restart is returned as an error instead of an immediate success.
+
 ## Safety boundaries
 
 - Does **not** patch or replace the official Codex binary

@@ -21,6 +21,8 @@ use std::sync::OnceLock;
 
 const THEME_PORT: u16 = 17890;
 const DREAM_SKIN_CDP_PORT: u16 = 9335;
+pub(crate) const STATE_ROOT_ENV: &str = "CODEX_FUSION_STATE_ROOT";
+const THEME_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 fn local_app_data_fallback() -> String {
     std::env::var("USERPROFILE")
@@ -58,6 +60,34 @@ fn resolve_fusion_root() -> PathBuf {
 pub fn fusion_root() -> PathBuf {
     static ROOT: OnceLock<PathBuf> = OnceLock::new();
     ROOT.get_or_init(resolve_fusion_root).clone()
+}
+
+fn default_state_root() -> PathBuf {
+    PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_else(|_| local_app_data_fallback()))
+        .join("CodexDreamSkin")
+}
+
+/// 解析并初始化 Dream Skin 状态目录。
+/// 入参：配置中的状态目录字符串；返回：创建并规范化后的绝对路径；边界：拒绝空值、NUL 和路径穿越。
+fn resolve_state_root(value: &str) -> Result<PathBuf, String> {
+    if value.trim().is_empty() || value.contains('\0') || value.contains("..") {
+        return Err("dreamSkinStateRoot 不合法".into());
+    }
+    let path = PathBuf::from(value);
+    fs::create_dir_all(&path)
+        .map_err(|error| format!("创建 dreamSkinStateRoot 失败：{} ({error})", path.display()))?;
+    path.canonicalize()
+        .map_err(|error| format!("解析 dreamSkinStateRoot 失败：{} ({error})", path.display()))
+}
+
+/// 返回已由宿主配置的共享状态目录，未配置时回退到默认目录。
+/// 入参：无；返回：状态目录；边界：环境变量无效时仅回退，不执行破坏性操作。
+pub(crate) fn runtime_state_root() -> PathBuf {
+    std::env::var(STATE_ROOT_ENV)
+        .ok()
+        .map(PathBuf::from)
+        .filter(|path| path.is_dir())
+        .unwrap_or_else(default_state_root)
 }
 
 fn config_path() -> PathBuf {
@@ -101,17 +131,14 @@ fn default_dream_skin_port() -> u16 {
     DREAM_SKIN_CDP_PORT
 }
 fn default_dream_skin_state_root() -> String {
-    PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default())
-        .join("CodexDreamSkin")
-        .display()
-        .to_string()
+    default_state_root().display().to_string()
 }
 fn default_safe_mode() -> bool {
     true
 }
 
 /// 读取并校验 fusion-config.json。
-/// 入参：无；返回：合法配置；边界：路径穿越/不存在/端口越界/与主题端口冲突/关闭 safeMode 均拒绝。
+/// 入参：无；返回：合法配置；边界：路径穿越/端口越界/与主题端口冲突/关闭 safeMode 均拒绝，状态目录缺失时自动创建。
 fn load_fusion_config() -> Result<FusionConfig, String> {
     let config_file = config_path();
     let example = fusion_root().join("fusion-config.example.json");
@@ -126,12 +153,7 @@ fn load_fusion_config() -> Result<FusionConfig, String> {
         if seeded.dream_skin_state_root.contains("YOUR_")
             || seeded.dream_skin_state_root.trim().is_empty()
         {
-            seeded.dream_skin_state_root = PathBuf::from(
-                std::env::var("LOCALAPPDATA").unwrap_or_else(|_| local_app_data_fallback()),
-            )
-            .join("CodexDreamSkin")
-            .display()
-            .to_string();
+            seeded.dream_skin_state_root = default_state_root().display().to_string();
         }
         fs::write(
             &config_file,
@@ -169,22 +191,12 @@ fn load_fusion_config() -> Result<FusionConfig, String> {
       config.dream_skin_port
     ));
     }
-    let state_root = PathBuf::from(&config.dream_skin_state_root);
-    if config.dream_skin_state_root.trim().is_empty()
-        || config.dream_skin_state_root.contains('\0')
-        || config.dream_skin_state_root.contains("..")
-    {
-        return Err("dreamSkinStateRoot 不合法".into());
-    }
-    if !state_root.exists() {
-        return Err(format!(
-            "dreamSkinStateRoot 不存在：{}",
-            state_root.display()
-        ));
-    }
     if !config.safe_mode {
         return Err("safeMode=false 已被拒绝：Fusion 要求始终限制在工作区根内".into());
     }
+    let state_root = resolve_state_root(&config.dream_skin_state_root)?;
+    std::env::set_var(STATE_ROOT_ENV, &state_root);
+    config.dream_skin_state_root = state_root.display().to_string();
     Ok(config)
 }
 
@@ -394,10 +406,10 @@ fn send_theme_request(method: &str, path: &str, body: Option<Value>) -> Result<V
     let mut stream = std::net::TcpStream::connect(("127.0.0.1", THEME_PORT))
         .map_err(|error| format!("连接主题服务失败：{error}"))?;
     stream
-        .set_read_timeout(Some(std::time::Duration::from_secs(8)))
+        .set_read_timeout(Some(THEME_REQUEST_TIMEOUT))
         .map_err(|error| format!("设置主题读取超时失败：{error}"))?;
     stream
-        .set_write_timeout(Some(std::time::Duration::from_secs(8)))
+        .set_write_timeout(Some(THEME_REQUEST_TIMEOUT))
         .map_err(|error| format!("设置主题写入超时失败：{error}"))?;
     stream
         .write_all(request.as_bytes())
@@ -903,7 +915,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
         builder = builder.icon(icon.clone());
     }
     builder = builder.on_menu_event(|app, event| match event.id().as_ref() {
-        "show" => show_main_window(&app),
+        "show" => show_main_window(app),
         "apply" => {
             let _ = send_theme_request(
                 "POST",
@@ -915,11 +927,9 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
             let _ = send_theme_request("POST", "/api/restart-codex", Some(serde_json::json!({})));
         }
         "themes" => {
-            if let Ok(root) = std::env::var("LOCALAPPDATA") {
-                let _ = Command::new("explorer.exe")
-                    .arg(PathBuf::from(root).join("CodexDreamSkin").join("themes"))
-                    .spawn();
-            }
+            let _ = Command::new("explorer.exe")
+                .arg(runtime_state_root().join("themes"))
+                .spawn();
         }
         "exit" => app.exit(0),
         _ => {}
@@ -939,11 +949,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
 }
 
 fn active_theme_id() -> String {
-    let root = std::env::var("LOCALAPPDATA").unwrap_or_default();
-    let path = PathBuf::from(root)
-        .join("CodexDreamSkin")
-        .join("active-theme")
-        .join("theme.json");
+    let path = runtime_state_root().join("active-theme").join("theme.json");
     fs::read_to_string(path)
         .ok()
         .and_then(|text| serde_json::from_str::<Value>(&text).ok())
@@ -999,4 +1005,58 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("运行 Codex Fusion 宿主失败");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{resolve_state_root, runtime_state_root, STATE_ROOT_ENV};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn unique_state_root() -> PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("系统时间应可用")
+            .as_nanos();
+        std::env::temp_dir().join(format!("codex-fusion-state-{suffix}"))
+    }
+
+    #[test]
+    fn creates_missing_configured_state_root() {
+        let root = unique_state_root();
+        assert!(!root.exists());
+
+        let resolved =
+            resolve_state_root(root.to_string_lossy().as_ref()).expect("缺失状态目录应自动创建");
+
+        assert!(resolved.is_dir());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rejects_unsafe_state_root_values() {
+        assert!(resolve_state_root("").is_err());
+        assert!(resolve_state_root("folder/../state").is_err());
+        assert!(resolve_state_root("state\0root").is_err());
+    }
+
+    #[test]
+    fn runtime_state_root_uses_configured_path() {
+        let _guard = env_lock().lock().expect("环境变量测试锁不应中毒");
+        let root = unique_state_root();
+        fs::create_dir_all(&root).expect("测试状态目录应可创建");
+        std::env::set_var(STATE_ROOT_ENV, &root);
+
+        assert_eq!(runtime_state_root(), root);
+
+        std::env::remove_var(STATE_ROOT_ENV);
+        let _ = fs::remove_dir_all(root);
+    }
 }
