@@ -1,8 +1,6 @@
-# Dependencies & build
+# Dependencies & build (frontend/dist IS committed so tauri builds on fresh clone)
 **/node_modules/
 **/target/
-**/dist/
-!frontend/dist/
 *.tsbuildinfo
 
 # Local machine state (do not publish)
