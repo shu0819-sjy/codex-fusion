@@ -3,11 +3,14 @@ import {
   Check,
   CircleDot,
   CloudRain,
+  FileText,
+  FolderOpen,
   FolderTree,
   ImagePlus,
   Palette,
   RefreshCw,
   Search,
+  Settings,
   Snowflake,
   Sparkles,
   Trash2,
@@ -154,6 +157,16 @@ function errorMessage(cause: unknown): string {
   return raw;
 }
 
+/** 将 Unix 秒时间戳格式化为本地可读日期。入参：时间戳字符串；返回：YYYY-MM-DD HH:mm；边界：非数字或非法值时返回原样。 */
+function formatTimestamp(value: string): string {
+  const numeric = Number(value);
+  if (!value || !Number.isFinite(numeric) || numeric <= 0) return value;
+  const date = new Date(numeric * 1000);
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (part: number): string => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 /** 将主题编号转换为本机预览地址。入参：主题编号；返回：受控预览 URL。 */
 function previewUrl(id: string): string {
   return `${THEME_ORIGIN}/api/preview/${encodeURIComponent(id)}`;
@@ -219,6 +232,8 @@ export interface ThemeStudioProps {
   onRequestModeSwitch?: (target: FusionMode) => Promise<ModeSwitchResult>;
   /** 切换到 Code-Codex 工作区（文件树 / 编辑器）；未提供时隐藏入口。 */
   onOpenWorkspace?: () => void;
+  /** 显式启用 Code-Codex 模式切换入口；默认关闭（绝大多数用户只用 Dream Skin，入口多余且误点会关掉带皮肤会话）。 */
+  enableCodeCodex?: boolean;
   /** 启动自检结果（宿主决定，前端只展示）；未提供时不显示。 */
   startupNotice?: { text: string; tone: 'success' | 'neutral' | 'warning' } | null;
   /** 当前运行模式（由 App 从 ensure / 切换结果提升）；未知时顶栏双按钮均可切换。 */
@@ -230,6 +245,7 @@ export interface ThemeStudioProps {
 export function ThemeStudio({
   onRequestModeSwitch,
   onOpenWorkspace,
+  enableCodeCodex = false,
   startupNotice,
   activeMode = 'unknown',
   onActiveModeChange,
@@ -239,6 +255,8 @@ export function ThemeStudio({
   const [selectedId, setSelectedId] = useState('');
   const [skinConnected, setSkinConnected] = useState(false);
   const [codexMessage, setCodexMessage] = useState('正在读取主题服务…');
+  /** 首次状态探测完成前为中性"检测中"，避免自愈进行中的短暂红字闪烁。 */
+  const [probing, setProbing] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -255,6 +273,14 @@ export function ThemeStudio({
   const [pendingSwitch, setPendingSwitch] = useState<FusionMode | null>(null);
   const [switchBusy, setSwitchBusy] = useState(false);
   const [codeCodexWarning, setCodeCodexWarning] = useState<string | null>(null);
+  /** 外来（未加皮肤）官方 Codex 会话进程数；null=尚未探测。关闭外来会话可释放系统资源、避免窗口卡顿。 */
+  const [foreignCodex, setForeignCodex] = useState<number | null>(null);
+  const [foreignBusy, setForeignBusy] = useState(false);
+  const [foreignDismissed, setForeignDismissed] = useState(false);
+  /** 自愈提示可见性：15 秒后自动淡出，避免常驻顶栏。 */
+  const [startupNoticeVisible, setStartupNoticeVisible] = useState(true);
+  /** 设置面板开关。 */
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragDepthRef = useRef(0);
@@ -303,6 +329,7 @@ export function ThemeStudio({
       setError(errorMessage(cause));
       setCodexMessage('无法连接 Dream Skin 主题服务');
     } finally {
+      setProbing(false);
       setBusy(null);
     }
   }, [requestThemeApi]);
@@ -310,6 +337,93 @@ export function ThemeStudio({
   useEffect(() => {
     void loadThemes();
   }, [loadThemes]);
+
+  /** 探测外来（未加皮肤）官方 Codex 会话进程数。入参：无；返回：异步；边界：接口不可用时视为无外来会话。 */
+  const refreshForeignCodex = useCallback(async () => {
+    try {
+      const value = (await requestThemeApi('GET', '/api/foreign-codex')) as { count?: number };
+      setForeignCodex(typeof value.count === 'number' ? value.count : 0);
+    } catch {
+      setForeignCodex(0);
+    }
+  }, [requestThemeApi]);
+
+  useEffect(() => {
+    void refreshForeignCodex();
+  }, [refreshForeignCodex]);
+
+  /** 关闭外来（未加皮肤）官方 Codex 会话，释放其占用的 CPU/内存。只结束精确匹配的外来进程，归属会话不受影响。 */
+  const closeForeignCodex = useCallback(async () => {
+    if (foreignBusy) return;
+    setForeignBusy(true);
+    try {
+      const value = (await requestThemeApi('POST', '/api/close-foreign-codex')) as {
+        ok?: boolean;
+        killed?: number;
+      };
+      if (value.ok) {
+        setToast(`已关闭 ${value.killed ?? 0} 个官方 Codex 会话进程`);
+        setForeignCodex(0);
+        setForeignDismissed(true);
+      } else {
+        setError('关闭官方 Codex 会话失败，请稍后重试');
+      }
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setForeignBusy(false);
+    }
+  }, [foreignBusy, requestThemeApi]);
+
+  /** 打开主题壁纸目录（explorer）。入参：无；返回：异步；边界：失败仅提示不阻塞。 */
+  const openThemeDir = useCallback(async () => {
+    try {
+      await requestThemeApi('GET', '/api/open-dir');
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  }, [requestThemeApi]);
+
+  /** 打开宿主日志文件（记事本），便于排障。入参：无；返回：异步；边界：失败仅提示不阻塞。 */
+  const openLogFile = useCallback(async () => {
+    try {
+      await requestThemeApi('GET', '/api/open-log');
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  }, [requestThemeApi]);
+
+  /** 自愈提示 15 秒后自动消失，不再常驻顶栏。 */
+  useEffect(() => {
+    setStartupNoticeVisible(true);
+    if (!startupNotice) return;
+    const timer = window.setTimeout(() => setStartupNoticeVisible(false), 15000);
+    return () => window.clearTimeout(timer);
+  }, [startupNotice]);
+
+  /** 仅刷新连接状态（不重载主题，避免打断编辑状态）。用于未连接时的自动探测。 */
+  const refreshStatus = useCallback(async () => {
+    try {
+      const value = await requestThemeApi('GET', '/api/health');
+      if (value && typeof value === 'object') {
+        const health = value as { cdpConnected?: boolean; message?: string };
+        if (typeof health.cdpConnected === 'boolean') setSkinConnected(health.cdpConnected);
+        if (typeof health.message === 'string') setCodexMessage(health.message);
+        setProbing(false);
+      }
+    } catch {
+      // 服务暂时不可达时保留上次状态，下次轮询再试
+    }
+  }, [requestThemeApi]);
+
+  // 未连接时每 4 秒探测一次连接状态；连接成功后自动停止，避免空转。
+  // 覆盖场景：宿主启动自检/自愈需要数秒拉起 Codex CDP，首屏加载时端口尚未就绪，
+  // 轮询让底部状态与顶栏芯片在 CDP 就绪后自动转绿，无需手动刷新。
+  useEffect(() => {
+    if (skinConnected) return;
+    const timer = window.setInterval(() => void refreshStatus(), 4000);
+    return () => window.clearInterval(timer);
+  }, [skinConnected, refreshStatus]);
 
 
   useEffect(() => {
@@ -630,16 +744,16 @@ export function ThemeStudio({
         </div>
         {/* U4：顶栏统一 Mode + CDP 状态芯片 */}
         <div
-          className={`theme-mode-chip ${activeMode === 'unknown' ? 'unknown' : 'known'} ${skinConnected ? 'cdp-ok' : 'cdp-off'}`}
+          className={`theme-mode-chip ${activeMode === 'unknown' ? 'unknown' : 'known'} ${probing ? 'cdp-probing' : skinConnected ? 'cdp-ok' : 'cdp-off'}`}
           role="status"
           aria-live="polite"
-          title={codeCodexWarning ?? statusCopy(skinConnected, Boolean(activeTheme), codexMessage)}
+          title={codeCodexWarning ?? (probing ? '正在检测 Codex 连接…' : statusCopy(skinConnected, Boolean(activeTheme), codexMessage))}
         >
           <span className="theme-connection-dot" aria-hidden="true" />
           <span>
             {activeMode === 'dream-skin' ? 'Dream Skin' : activeMode === 'code-codex' ? 'Code-Codex' : '模式未确认'}
             {' · '}
-            {switchBusy ? '切换中…' : skinConnected ? 'CDP 已连接' : codeCodexWarning ? 'CDP 异常' : 'CDP 未连接'}
+            {probing ? '检测中…' : switchBusy ? '切换中…' : skinConnected ? 'CDP 已连接' : codeCodexWarning ? 'CDP 异常' : 'CDP 未连接'}
           </span>
         </div>
         {onOpenWorkspace ? (
@@ -653,26 +767,41 @@ export function ThemeStudio({
             <FolderTree size={15} /> 工作区
           </button>
         ) : null}
-        {/* V3：当前模式作态指示，另一侧为「切换到…」主操作 */}
-        <button
-          className={`btn theme-mode-btn ${activeMode === 'dream-skin' ? 'is-current' : 'primary'}`}
-          type="button"
-          onClick={() => openModeSwitch('dream-skin')}
-          disabled={switchBusy || activeMode === 'dream-skin'}
-          aria-current={activeMode === 'dream-skin' ? 'true' : undefined}
-          title={activeMode === 'dream-skin' ? '当前为 Dream Skin 模式' : '切换回 Dream Skin 模式（会先关闭 Code-Codex，再恢复壁纸与动态效果）'}
-        >
-          <WandSparkles size={15} /> {activeMode === 'dream-skin' ? 'Dream Skin · 当前' : '切回 Dream Skin'}
+        {enableCodeCodex ? (
+          <>
+            <button
+              className={`btn theme-mode-btn ${activeMode === 'dream-skin' ? 'is-current' : 'primary'}`}
+              type="button"
+              onClick={() => openModeSwitch('dream-skin')}
+              disabled={switchBusy || activeMode === 'dream-skin'}
+              aria-current={activeMode === 'dream-skin' ? 'true' : undefined}
+              title={activeMode === 'dream-skin' ? '当前为 Dream Skin 模式' : '切换回 Dream Skin 模式（会先关闭 Code-Codex，再恢复壁纸与动态效果）'}
+            >
+              <WandSparkles size={15} /> {activeMode === 'dream-skin' ? 'Dream Skin · 当前' : '切回 Dream Skin'}
+            </button>
+            <button
+              className={`btn theme-mode-btn ${activeMode === 'code-codex' ? 'is-current' : 'primary'}`}
+              type="button"
+              onClick={() => openModeSwitch('code-codex')}
+              disabled={switchBusy || activeMode === 'code-codex'}
+              aria-current={activeMode === 'code-codex' ? 'true' : undefined}
+              title={activeMode === 'code-codex' ? '当前为 Code-Codex 模式' : '切换到 Code-Codex 模式（会先关闭 Dream Skin 管理的 Codex 会话，失败会自动恢复）'}
+            >
+              <Palette size={15} /> {activeMode === 'code-codex' ? 'Code-Codex · 当前' : '切换到 Code-Codex'}
+            </button>
+          </>
+        ) : null}
+        {activeTheme ? (
+          <span className="theme-topbar-theme-chip" title={`当前活动主题：${activeTheme}`}>{activeTheme}</span>
+        ) : null}
+        <button className="icon-btn" type="button" onClick={() => void openThemeDir()} disabled={busy !== null} title="打开主题文件夹">
+          <FolderOpen size={16} />
         </button>
-        <button
-          className={`btn theme-mode-btn ${activeMode === 'code-codex' ? 'is-current' : 'primary'}`}
-          type="button"
-          onClick={() => openModeSwitch('code-codex')}
-          disabled={switchBusy || activeMode === 'code-codex'}
-          aria-current={activeMode === 'code-codex' ? 'true' : undefined}
-          title={activeMode === 'code-codex' ? '当前为 Code-Codex 模式' : '切换到 Code-Codex 模式（会先关闭 Dream Skin 管理的 Codex 会话，失败会自动恢复）'}
-        >
-          <Palette size={15} /> {activeMode === 'code-codex' ? 'Code-Codex · 当前' : '切换到 Code-Codex'}
+        <button className="icon-btn" type="button" onClick={() => void openLogFile()} disabled={busy !== null} title="打开日志文件">
+          <FileText size={16} />
+        </button>
+        <button className="icon-btn" type="button" onClick={() => setSettingsOpen(true)} title="设置">
+          <Settings size={16} />
         </button>
         <button className="icon-btn" type="button" onClick={() => void loadThemes()} disabled={busy !== null || restartBusy || switchBusy} title="刷新主题">
           <RefreshCw size={16} className={busy === 'load' ? 'spin' : ''} />
@@ -707,7 +836,7 @@ export function ThemeStudio({
                   <img src={previewUrl(theme.id)} alt="" className="theme-list-image" loading="lazy" />
                   <span className="theme-list-copy">
                     <strong>{theme.name}</strong>
-                    <small>{theme.created} · {theme.imageSize}</small>
+                    <small>{formatTimestamp(theme.created)} · {theme.imageSize}</small>
                   </span>
                 </button>
                 {theme.isActive ? (
@@ -806,7 +935,7 @@ export function ThemeStudio({
                 <div className="inspector-grid">
                   <div><span>文件</span><strong>{selectedTheme.image}</strong></div>
                   <div><span>大小</span><strong>{selectedTheme.imageSize}</strong></div>
-                  <div><span>创建日期</span><strong>{selectedTheme.created}</strong></div>
+                  <div><span>创建日期</span><strong>{formatTimestamp(selectedTheme.created)}</strong></div>
                   <div><span>活动主题</span><strong>{activeTheme || '未读取'}</strong></div>
                 </div>
               </div>
@@ -922,12 +1051,12 @@ export function ThemeStudio({
             </div>
           )}
 
-          <div className={`theme-status ${skinConnected ? 'ok' : activeTheme ? 'configured' : 'warn'}`}>
+          <div className={`theme-status ${probing ? 'probing' : skinConnected ? 'ok' : activeTheme ? 'configured' : 'warn'}`}>
             <span className="theme-status-dot" />
-            <span>{statusCopy(skinConnected, Boolean(activeTheme), codexMessage)}</span>
+            <span>{probing ? '正在检测 Codex 连接…' : statusCopy(skinConnected, Boolean(activeTheme), codexMessage)}</span>
             {!skinConnected ? (
-              <button className="btn theme-restart-button" type="button" onClick={() => void restartCodex()} disabled={restartBusy || switchBusy}>
-                {restartBusy ? '正在连接…' : '连接并启用动态效果'}
+              <button className="btn theme-restart-button" type="button" onClick={() => void restartCodex()} disabled={restartBusy || switchBusy || probing}>
+                {probing ? '正在检测…' : restartBusy ? '正在连接…' : '连接并启用动态效果'}
               </button>
             ) : null}
           </div>
@@ -955,11 +1084,71 @@ export function ThemeStudio({
         </section>
       </section>
 
-      {startupNotice ? (
+      {startupNotice && startupNoticeVisible ? (
         <div className={`theme-startup-notice ${startupNotice.tone}`} role="status">{startupNotice.text}</div>
       ) : null}
 
+      {typeof foreignCodex === 'number' && foreignCodex > 0 && !foreignDismissed ? (
+        <div className="theme-warning-banner theme-foreign-banner" role="status">
+          <span>检测到 {foreignCodex} 个官方 Codex 会话进程（未加皮肤）正在运行，会持续占用 CPU 与内存、拖慢系统。</span>
+          <button
+            type="button"
+            className="btn"
+            disabled={foreignBusy}
+            onClick={() => {
+              if (window.confirm('确定关闭官方 Codex 会话吗？\n\n此操作只会结束未加皮肤的 Codex 窗口，当前已加皮肤的会话不受影响。')) {
+                void closeForeignCodex();
+              }
+            }}
+          >
+            {foreignBusy ? '正在关闭…' : '关闭官方 Codex 会话'}
+          </button>
+          <button type="button" className="btn" onClick={() => setForeignDismissed(true)}>忽略</button>
+        </div>
+      ) : null}
+
       {toast && <div className="theme-toast" role="status"><Check size={15} />{toast}</div>}
+
+      {settingsOpen ? (
+        <Modal
+          title="设置与诊断"
+          onClose={() => setSettingsOpen(false)}
+          footer={(
+            <>
+              <button type="button" className="btn" onClick={() => void openLogFile()}>打开日志</button>
+              <button type="button" className="btn primary" autoFocus onClick={() => setSettingsOpen(false)}>完成</button>
+            </>
+          )}
+        >
+          <div className="theme-settings">
+            <div className="settings-row">
+              <span>运行模式</span>
+              <strong>Dream Skin（唯一带皮肤会话）</strong>
+            </div>
+            <div className="settings-row">
+              <span>活动主题</span>
+              <strong>{activeTheme || '未读取'}</strong>
+            </div>
+            <div className="settings-row">
+              <span>Codex 连接</span>
+              <strong className={skinConnected ? 'settings-ok' : 'settings-warn'}>
+                {probing ? '检测中…' : skinConnected ? '已连接 · CDP 就绪' : '未连接'}
+              </strong>
+            </div>
+            <div className="settings-row">
+              <span>主题文件</span>
+              <strong>{themes.length} 个已保存</strong>
+            </div>
+            <p className="settings-hint">Fusion 始终维护唯一一个带皮肤的 Codex 会话；检测到无皮肤官方会话时会自动接管关闭。</p>
+            <div className="settings-actions">
+              <button type="button" className="btn" disabled={restartBusy || probing} onClick={() => void restartCodex()}>
+                {restartBusy ? '正在连接…' : '重启 Codex 会话'}
+              </button>
+              <button type="button" className="btn" disabled={busy !== null} onClick={() => void openThemeDir()}>打开主题文件夹</button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
 
       {pendingSwitch ? (
         <Modal

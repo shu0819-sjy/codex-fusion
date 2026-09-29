@@ -1,6 +1,6 @@
 [package]
 name = "codex-fusion-host"
-version = "0.2.0"
+version = "0.3.0"
 description = "Codex Fusion Tauri 宿主"
 authors = ["Codex Fusion"]
 edition = "2021"

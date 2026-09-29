@@ -66,8 +66,46 @@ fn active_theme_name() -> String {
         .and_then(|v| v.get("name")?.as_str().map(str::to_owned))
         .unwrap_or_else(|| "未知".into())
 }
+/// 探测 ChatGPT 是否在运行（带 2 秒缓存：前端未连接时会轮询 /api/health，不能每次 spawn PowerShell）。
 fn codex_running() -> bool {
-    Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command", "if (Get-Process -Name ChatGPT -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }"]).status().map(|s| s.success()).unwrap_or(false)
+    use std::sync::{Mutex, OnceLock};
+    struct Cache {
+        at: Instant,
+        value: bool,
+    }
+    static CACHE: OnceLock<Mutex<Cache>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| {
+        Mutex::new(Cache {
+            at: Instant::now() - Duration::from_secs(60),
+            value: false,
+        })
+    });
+    let probe = || {
+        let mut ps = Command::new("powershell.exe");
+        crate::proc::hide_console(&mut ps);
+        ps.args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "if (Get-Process -Name ChatGPT -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }",
+            ])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    };
+    match cache.lock() {
+        Ok(mut guard) => {
+            if guard.at.elapsed() < Duration::from_secs(2) {
+                guard.value
+            } else {
+                let value = probe();
+                guard.at = Instant::now();
+                guard.value = value;
+                value
+            }
+        }
+        Err(_) => probe(),
+    }
 }
 fn cdp_port() -> u16 {
     read_json(&state_root().join("state.json"))
@@ -75,6 +113,59 @@ fn cdp_port() -> u16 {
         .filter(|p| (1024..=65535).contains(p))
         .map(|p| p as u16)
         .unwrap_or(9335)
+}
+/// 从 state.json 读取归属会话档案路径（用于精确区分外来 Codex 会话，绝不按进程名判定）。
+fn profile_path() -> Option<std::path::PathBuf> {
+    read_json(&state_root().join("state.json"))
+        .and_then(|v| {
+            v.get("profilePath")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+        })
+        .map(std::path::PathBuf::from)
+}
+/// 查询外来（非归属）Codex 会话进程数。入参：无；返回：JSON；边界：查询失败视为无外来会话。
+fn foreign_codex_count() -> Value {
+    let count = profile_path()
+        .map(|p| crate::codex_runtime::foreign_codex_pids(&p).len())
+        .unwrap_or(0);
+    json!({"count": count})
+}
+/// 结束外来（非归属）Codex 会话。只按精确 PID 结束，绝不按进程名批量杀；归属会话不在候选内。
+/// 入参：无；返回：结束数量；边界：无外来会话时安全返回 0。
+fn close_foreign_codex() -> Value {
+    let Some(profile) = profile_path() else {
+        return json!({"ok": false, "error": "未找到归属会话档案，已停止操作"});
+    };
+    let pids = crate::codex_runtime::foreign_codex_pids(&profile);
+    if pids.is_empty() {
+        return json!({"ok": true, "killed": 0});
+    }
+    let list = pids
+        .iter()
+        .map(|p| p.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let script = format!(
+        "$ErrorActionPreference='SilentlyContinue'; $ids = @({list}); foreach ($id in $ids) {{ Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }}; 'done'"
+    );
+    let mut ps = Command::new("powershell.exe");
+    crate::proc::hide_console(&mut ps);
+    let output = ps
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script.as_str(),
+        ])
+        .output();
+    match output {
+        Ok(o) if o.status.success() => json!({"ok": true, "killed": pids.len()}),
+        Ok(_) => json!({"ok": false, "error": "结束外来会话失败（PowerShell 非零退出）"}),
+        Err(error) => json!({"ok": false, "error": format!("结束外来会话失败：{error}")}),
+    }
 }
 fn cdp_tcp_up() -> bool {
     let port = cdp_port();
@@ -401,6 +492,10 @@ fn handle(mut stream: TcpStream) {
             }
             json_response(&mut stream, 200, s)
         }
+        ("GET", "/api/foreign-codex") => json_response(&mut stream, 200, foreign_codex_count()),
+        ("POST", "/api/close-foreign-codex") => {
+            json_response(&mut stream, 200, close_foreign_codex())
+        }
         ("POST", "/api/restart-codex") => {
             let (status, body) =
                 restart_response(crate::codex_runtime::ensure_dream_skin_runtime(true));
@@ -455,6 +550,24 @@ fn handle(mut stream: TcpStream) {
                 Ok(_) => json_response(&mut stream, 200, json!({"ok":true})),
                 Err(e) => {
                     json_response(&mut stream, 500, json!({"ok":false,"error":e.to_string()}))
+                }
+            }
+        }
+        ("GET", "/api/open-log") => {
+            let log_path = crate::fusion_root().join("host-out.log");
+            if !log_path.is_file() {
+                json_response(
+                    &mut stream,
+                    404,
+                    json!({"ok":false,"error":"日志文件尚不存在（无启动记录）"}),
+                );
+            } else {
+                let r = Command::new("notepad.exe").arg(&log_path).spawn();
+                match r {
+                    Ok(_) => json_response(&mut stream, 200, json!({"ok":true})),
+                    Err(e) => {
+                        json_response(&mut stream, 500, json!({"ok":false,"error":e.to_string()}))
+                    }
                 }
             }
         }
@@ -583,7 +696,7 @@ fn create_theme(stream: &mut TcpStream, req: &Request) {
         Some("image/webp") => "webp",
         _ => "jpg",
     };
-    let result=decode_base64(data).and_then(|b|{fs::create_dir_all(&dir).map_err(|e|e.to_string())?;fs::write(dir.join(format!("art.{ext}")),b).map_err(|e|e.to_string())?;fs::write(dir.join("theme.json"),serde_json::to_vec_pretty(&json!({"schemaVersion":1,"id":id,"name":name,"appearance":"auto","image":format!("art.{ext}"),"art":{"focusX":null,"focusY":null,"safeArea":"auto","taskMode":"auto"},"palette":{}})).unwrap()).map_err(|e|e.to_string())});
+    let result=decode_base64(data).and_then(|b|{fs::create_dir_all(&dir).map_err(|e|e.to_string())?;fs::write(dir.join(format!("art.{ext}")),b).map_err(|e|e.to_string())?;crate::codex_runtime::atomic_write_json(&dir.join("theme.json"),&json!({"schemaVersion":1,"id":id,"name":name,"appearance":"auto","image":format!("art.{ext}"),"art":{"focusX":null,"focusY":null,"safeArea":"auto","taskMode":"auto"},"palette":{}})).map_err(|e|e.to_string())});
     match result {
         Ok(_) => json_response(stream, 200, json!({"ok":true,"id":id,"name":name})),
         Err(e) => json_response(stream, 400, json!({"ok":false,"error":e})),
@@ -647,10 +760,11 @@ fn save_effect(stream: &mut TcpStream, req: &Request, update: bool) {
         return;
     }
     let r = fs::create_dir_all(effects_dir())
-        .and_then(|_| fs::write(path, serde_json::to_vec_pretty(&v).unwrap()));
+        .map_err(|e| e.to_string())
+        .and_then(|_| crate::codex_runtime::atomic_write_json(&path, &v));
     match r {
         Ok(_) => json_response(stream, 200, json!({"ok":true,"effect":v})),
-        Err(e) => json_response(stream, 500, json!({"ok":false,"error":e.to_string()})),
+        Err(e) => json_response(stream, 500, json!({"ok":false,"error":e})),
     }
 }
 fn delete_effect(stream: &mut TcpStream, req: &Request) {
@@ -707,7 +821,10 @@ fn apply_effect(stream: &mut TcpStream, effect: &str, config: Value, metadata: O
             if effect == "none" {
                 let _ = fs::remove_file(state_root().join("active-effect.json"));
             } else {
-                let _=fs::write(state_root().join("active-effect.json"),serde_json::to_vec_pretty(&json!({"schemaVersion":1,"effect":effect,"config":config,"effectId":id,"name":name,"appliedAt":timestamp().to_string()})).unwrap());
+                let _ = crate::codex_runtime::atomic_write_json(
+                    &state_root().join("active-effect.json"),
+                    &json!({"schemaVersion":1,"effect":effect,"config":config,"effectId":id,"name":name,"appliedAt":timestamp().to_string()}),
+                );
             }
             if let Some(obj) = result.as_object_mut() {
                 obj.insert("name".into(), json!(name));
@@ -736,7 +853,7 @@ pub fn start() -> Result<(), String> {
                             .name("theme-http-request".into())
                             .spawn(move || handle(s));
                     }
-                    Err(e) => eprintln!("主题服务连接失败: {e}"),
+                    Err(e) => crate::log::line(&format!("主题服务连接失败: {e}")),
                 }
             }
         })

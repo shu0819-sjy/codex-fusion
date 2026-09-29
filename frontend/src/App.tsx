@@ -43,7 +43,8 @@ function inferModeFromResult(result: ModeSwitchResult | null): FusionMode | 'unk
 export default function App() {
   const [view, setView] = useState<'theme' | 'workspace'>('theme');
   const [startupNotice, setStartupNotice] = useState<Notice | null>(null);
-  const [activeMode, setActiveMode] = useState<FusionMode | 'unknown'>('unknown');
+  // 单模式应用：Fusion 只运行 Dream Skin（带皮肤）这一个 Codex 会话，模式指示恒为 Dream Skin。
+  const [activeMode, setActiveMode] = useState<FusionMode | 'unknown'>('dream-skin');
   const bridge = useMemo(() => createBridge(), []);
   const ensured = useRef(false);
 
@@ -114,7 +115,6 @@ export default function App() {
   }
   return (
     <ThemeStudio
-      onOpenWorkspace={() => setView('workspace')}
       startupNotice={startupNotice}
       activeMode={activeMode}
       onActiveModeChange={setActiveMode}

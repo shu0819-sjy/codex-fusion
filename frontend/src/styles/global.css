@@ -2241,6 +2241,7 @@ button {
 .theme-status.ok .theme-status-dot { background: var(--ok); }
 .theme-status.configured .theme-status-dot { background: #c8a55a; }
 .theme-status.warn .theme-status-dot { background: var(--warn); }
+.theme-status.probing .theme-status-dot { background: var(--text-dim); }
 .theme-workspace > .error-notice {
   margin-top: 8px;
 }
@@ -2270,6 +2271,61 @@ button {
 }
 .theme-mode-chip.cdp-ok .theme-connection-dot { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
 .theme-mode-chip.cdp-off .theme-connection-dot { background: var(--warn); box-shadow: 0 0 8px rgba(224, 164, 74, 0.55); }
+.theme-mode-chip.cdp-probing .theme-connection-dot { background: var(--text-dim); box-shadow: none; }
+/* 顶栏：当前活动主题徽标（信息性，紧邻状态 chip；不参与 flex 挤压） */
+.theme-topbar-theme-chip {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-height: 26px;
+  max-width: 240px;
+  padding: 0 12px;
+  border: 1px solid rgba(108, 132, 176, 0.35);
+  border-radius: 999px;
+  color: var(--text-soft);
+  background: rgba(20, 26, 40, 0.72);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 设置面板 */
+.theme-settings {
+  display: grid;
+  gap: 10px;
+  min-width: 320px;
+}
+.theme-settings .settings-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 13px;
+}
+.theme-settings .settings-row > span {
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.theme-settings .settings-row > strong {
+  color: var(--text);
+  font-weight: 600;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.theme-settings .settings-row > strong.settings-ok { color: var(--ok); }
+.theme-settings .settings-row > strong.settings-warn { color: var(--warn); }
+.theme-settings .settings-hint {
+  margin: 2px 0 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.theme-settings .settings-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
 .theme-mode-btn.is-current {
   border-color: #6b7a96;
   color: var(--text);
@@ -2327,7 +2383,8 @@ button {
 .theme-startup-notice {
   position: fixed;
   left: 50%;
-  top: 16px;
+  /* 顶栏高度约 64px：横幅悬浮在顶栏下方，避免遮住顶栏元素 */
+  top: 78px;
   transform: translateX(-50%);
   z-index: 22;
   max-width: min(680px, calc(100vw - 40px));

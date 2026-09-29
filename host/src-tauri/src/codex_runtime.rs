@@ -1,12 +1,17 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 
 use crate::injector;
+
+/// 本次启动是否发生过"外来会话自动恢复"：宿主后台自检先自愈，前端启动自检随后
+/// 执行（端口已就绪、不再恢复），该标记让报告与提示如实反映本次启动的自愈事实。
+static STARTUP_RECOVERED: AtomicBool = AtomicBool::new(false);
 
 const SKIN_VERSION: &str = "1.5.16-fusion";
 const RENDERER_INJECT_JS: &str = include_str!("../assets/renderer-inject.js");
@@ -53,11 +58,7 @@ fn write_state(mut state: Value) -> Result<(), String> {
         obj.insert("host".into(), json!("codex-fusion"));
     }
     fs::create_dir_all(state_root()).map_err(|e| e.to_string())?;
-    fs::write(
-        state_path(),
-        serde_json::to_vec_pretty(&state).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())
+    atomic_write_json(&state_path(), &state)
 }
 fn timestamp() -> String {
     SystemTime::now()
@@ -65,6 +66,23 @@ fn timestamp() -> String {
         .unwrap_or_default()
         .as_millis()
         .to_string()
+}
+
+/// 原子写文件：先写同目录临时文件再 rename，避免进程崩溃/断电把 JSON 写坏成半截。
+pub(crate) fn atomic_write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("state");
+    let tmp = path.with_file_name(format!("{file_name}.{}.tmp", std::process::id()));
+    fs::write(&tmp, bytes).map_err(|e| format!("写临时文件失败：{e}"))?;
+    if let Err(e) = fs::rename(&tmp, path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(format!("原子替换文件失败：{e}"));
+    }
+    Ok(())
+}
+
+pub(crate) fn atomic_write_json(path: &Path, value: &Value) -> Result<(), String> {
+    let bytes = serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?;
+    atomic_write_bytes(path, &bytes)
 }
 
 fn resolve_codex_exe(state: &Value) -> Result<PathBuf, String> {
@@ -75,7 +93,9 @@ fn resolve_codex_exe(state: &Value) -> Result<PathBuf, String> {
         }
     }
     // Discover via Appx (transient powershell; does not leave a background process).
-    let output = Command::new("powershell.exe")
+    let mut ps = Command::new("powershell.exe");
+    crate::proc::hide_console(&mut ps);
+    let output = ps
     .args(["-NoProfile","-NonInteractive","-Command",
       "$p=Get-AppxPackage -Name OpenAI.Codex -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1; if(-not $p){exit 2}; $exe=Join-Path $p.InstallLocation 'app\\ChatGPT.exe'; if(-not (Test-Path -LiteralPath $exe)){exit 3}; Write-Output $exe"])
     .output().map_err(|e| e.to_string())?;
@@ -100,7 +120,9 @@ fn stop_owned_dream_skin_chatgpt(profile: &Path, port: u16) -> Result<String, St
     profile = profile_token,
     port = port
   );
-    let output = Command::new("powershell.exe")
+    let mut ps = Command::new("powershell.exe");
+    crate::proc::hide_console(&mut ps);
+    let output = ps
         .args([
             "-NoProfile",
             "-NonInteractive",
@@ -266,19 +288,110 @@ pub fn inject_active_skin(port: u16, browser_id: Option<&str>) -> Result<Value, 
     injector::evaluate_on_app_targets(port, &payload, browser_id)
 }
 
-/// Ensure official Codex is running with CDP 9335 + custom profile, then inject skin.
-/// When `restart` is true, existing ChatGPT processes are stopped first.
-fn chatgpt_running() -> bool {
-    Command::new("powershell.exe")
+/// 判断进程命令行是否使用了给定档案（忽略大小写、容忍 \\?\ verbatim 前缀差异）。
+/// 入参：进程命令行、期望档案路径；返回：是否匹配。边界：空串不匹配。
+fn cmdline_matches_profile(cmd: &str, profile: &str) -> bool {
+    if cmd.is_empty() || profile.is_empty() {
+        return false;
+    }
+    let profile_lower = profile.to_lowercase();
+    let cmd_lower = cmd.to_lowercase();
+    if cmd_lower.contains(&profile_lower) {
+        return true;
+    }
+    // state.json 的 profilePath 常带 \\?\ 前缀而命令行是普通路径：去掉前缀再宽松匹配。
+    let plain = profile_lower.trim_start_matches(r"\\?\");
+    !plain.is_empty() && cmd_lower.contains(plain)
+}
+
+/// 探测当前 ChatGPT 进程归属：owned=使用我们 cdp-profile 档案的会话；foreign=其余 ChatGPT 会话。
+/// 入参：期望档案路径；返回：(owned, foreign)；边界：查询失败视为无会话，交由后续流程兜底。
+fn chatgpt_session_state(profile: &Path) -> (bool, bool) {
+    let script = "$ErrorActionPreference='SilentlyContinue'; $procs = @(Get-CimInstance Win32_Process -Filter \"Name = 'ChatGPT.exe'\" -ErrorAction SilentlyContinue); $cmds = @(); foreach ($p in $procs) { $cmd = [string]$p.CommandLine; if (-not [string]::IsNullOrWhiteSpace($cmd)) { $cmds += $cmd } }; ConvertTo-Json -Compress -InputObject $cmds";
+    let mut ps = Command::new("powershell.exe");
+    crate::proc::hide_console(&mut ps);
+    let output = ps
         .args([
             "-NoProfile",
             "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
             "-Command",
-            "if(Get-Process -Name ChatGPT -ErrorAction SilentlyContinue){exit 0}else{exit 1}",
+            script,
         ])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+        .output();
+    match output {
+        Ok(o) if o.status.success() => {
+            let value: Value =
+                serde_json::from_str(&String::from_utf8_lossy(&o.stdout)).unwrap_or_default();
+            let cmds: Vec<String> = value
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let profile_full = profile.display().to_string();
+            let owned = cmds
+                .iter()
+                .any(|c| cmdline_matches_profile(c, &profile_full));
+            let foreign = cmds
+                .iter()
+                .any(|c| !cmdline_matches_profile(c, &profile_full));
+            (owned, foreign)
+        }
+        _ => (false, false),
+    }
+}
+
+/// 探测外来（非归属档案、且未启用调试端口）ChatGPT 会话的进程 PID 列表。
+/// 入参：期望档案路径；返回：外来 PID 列表（按命令行精确判定，绝不按进程名）；
+/// 边界：带调试端口但非归属档案的实例视为其他工具在用，不在候选内；查询失败返回空。
+pub fn foreign_codex_pids(profile: &Path) -> Vec<u32> {
+    let script = "$ErrorActionPreference='SilentlyContinue'; $procs = @(Get-CimInstance Win32_Process -Filter \"Name = 'ChatGPT.exe'\" -ErrorAction SilentlyContinue); $rows = @(); foreach ($p in $procs) { $cmd = [string]$p.CommandLine; if (-not [string]::IsNullOrWhiteSpace($cmd)) { $rows += [pscustomobject]@{ pid = [int]$p.ProcessId; cmd = $cmd } } }; ConvertTo-Json -Compress -InputObject $rows";
+    let mut ps = Command::new("powershell.exe");
+    crate::proc::hide_console(&mut ps);
+    let output = ps
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ])
+        .output();
+    let Ok(o) = output else {
+        return Vec::new();
+    };
+    if !o.status.success() {
+        return Vec::new();
+    }
+    let value: Value =
+        serde_json::from_str(&String::from_utf8_lossy(&o.stdout)).unwrap_or_default();
+    let profile_full = profile.display().to_string();
+    value
+        .as_array()
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|row| {
+                    let pid = row.get("pid").and_then(Value::as_u64).unwrap_or(0);
+                    let cmd = row.get("cmd").and_then(Value::as_str).unwrap_or("");
+                    if pid == 0 || cmd.is_empty() {
+                        return None;
+                    }
+                    // 归属档案或带调试端口的实例均不在外来候选内
+                    if cmdline_matches_profile(cmd, &profile_full)
+                        || cmd.to_lowercase().contains("--remote-debugging-port")
+                    {
+                        return None;
+                    }
+                    Some(pid as u32)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 pub fn ensure_dream_skin_runtime(restart: bool) -> Result<Value, String> {
@@ -286,6 +399,10 @@ pub fn ensure_dream_skin_runtime(restart: bool) -> Result<Value, String> {
     let profile = profile_path();
     let mut state = read_state();
     let exe = resolve_codex_exe(&state)?;
+    // 自愈标记：检测到外来（非归属）Codex 会话运行但未启用调试端口时，自动并行启动归属会话。
+    // 该标记跨本次启动内的多次自检保留：宿主后台自检先完成自愈，前端启动自检随后执行
+    // （此时端口已就绪、本调用不再恢复），报告仍如实反映"本次启动已自动恢复"。
+    let mut auto_recovered = STARTUP_RECOVERED.load(Ordering::Relaxed);
 
     // Match legacy ensure-dream-skin-mode.ps1 policy:
     // - restart=false never kills an existing Codex window
@@ -313,10 +430,20 @@ pub fn ensure_dream_skin_runtime(restart: bool) -> Result<Value, String> {
         )
         .is_ok();
         if tcp_up {
-            // already listening; continue to identity/write-state with a single probe below
-        } else if chatgpt_running() {
-            return Err("Codex 正在运行但未启用调试端口。请使用 Fusion 的「重启 Codex」显式重启（不会在启动自检时自动关窗）。".into());
+            // 归属会话已在监听：无需重复启动。
         } else {
+            // 自愈：按命令行归属区分会话，绝不按进程名批量处理。
+            // - 归属会话（带 cdp-profile）存在但端口未监听：属异常中间态，要求显式重启，不自动再开一份（避免同档案冲突）；
+            // - 外来会话（如点了官方图标启动、未带调试端口）：自动并行启动归属会话，皮肤即刻可用；
+            // - 无任何 Codex：正常启动归属会话。
+            let (owned, foreign) = chatgpt_session_state(&profile);
+            if owned {
+                return Err("检测到归属 Codex 会话存在但调试端口未监听。请使用 Fusion 的「重启 Codex」显式重启。".into());
+            }
+            auto_recovered = foreign || STARTUP_RECOVERED.load(Ordering::Relaxed);
+            if foreign {
+                STARTUP_RECOVERED.store(true, Ordering::Relaxed);
+            }
             launch_codex(&exe, port, &profile)?;
         }
     }
@@ -351,10 +478,16 @@ pub fn ensure_dream_skin_runtime(restart: bool) -> Result<Value, String> {
         thread::spawn(move || {
             thread::sleep(Duration::from_secs(8));
             if let Err(error) = inject_active_skin(port, Some(browser_for_inject.as_str())) {
-                eprintln!("deferred skin inject failed: {error}");
+                crate::log::line(&format!("延迟皮肤注入失败：{error}"));
             }
         });
         json!({"ok":true,"deferred":true})
+    };
+    let message = if auto_recovered {
+        "检测到官方 Codex 会话已运行（未启用调试端口），已自动启动带皮肤的归属会话，原会话保留。"
+            .to_string()
+    } else {
+        "Codex Fusion 已确保 Dream Skin 运行时（单进程宿主注入）".to_string()
     };
     Ok(json!({
       "ok": true,
@@ -368,8 +501,9 @@ pub fn ensure_dream_skin_runtime(restart: bool) -> Result<Value, String> {
       "codexExe": exe.display().to_string(),
       "profilePath": profile.display().to_string(),
       "injected": inject,
+      "recovered": auto_recovered,
       "timestamp": timestamp(),
-      "message": "Codex Fusion 已确保 Dream Skin 运行时（单进程宿主注入）"
+      "message": message
     }))
 }
 
@@ -418,11 +552,8 @@ pub fn activate_saved_theme(theme_id: &str) -> Result<Value, String> {
     } else {
         let _ = fs::remove_file(active.join("theme.css"));
     }
-    fs::write(
-        active.join("theme.json"),
-        serde_json::to_vec_pretty(&theme).unwrap(),
-    )
-    .map_err(|e| e.to_string())?;
+    let theme_value = serde_json::to_value(theme).unwrap_or_else(|_| json!({}));
+    atomic_write_json(&active.join("theme.json"), &theme_value).map_err(|e| e.to_string())?;
 
     // Live inject if CDP is up; otherwise just persist active theme.
     if injector::cdp_ready(default_port()) {
@@ -464,10 +595,51 @@ pub fn set_active_theme_image(image_path: &Path) -> Result<(), String> {
         }
         obj.insert("image".into(), json!(image_name));
     }
-    fs::write(
-        active.join("theme.json"),
-        serde_json::to_vec_pretty(&theme).unwrap(),
-    )
-    .map_err(|e| e.to_string())?;
+    atomic_write_json(&active.join("theme.json"), &theme).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cmdline_matches_profile;
+
+    #[test]
+    fn profile_match_verbatim_and_plain_forms() {
+        let profile = r"\\?\C:\Users\Example\AppData\Local\CodexDreamSkin\cdp-profile";
+        // 命令行带 verbatim 前缀（--user-data-dir 原样传递）
+        assert!(cmdline_matches_profile(
+            r#""C:\Program Files\WindowsApps\OpenAI.Codex\app\ChatGPT.exe" --user-data-dir=\\?\C:\Users\Example\AppData\Local\CodexDreamSkin\cdp-profile --remote-debugging-port=9335"#,
+            profile
+        ));
+        // 命令行是普通路径（无 \\?\ 前缀）
+        assert!(cmdline_matches_profile(
+            r#"ChatGPT.exe --user-data-dir=C:\Users\Example\AppData\Local\CodexDreamSkin\cdp-profile --remote-debugging-port=9335"#,
+            profile
+        ));
+        // 大小写不敏感
+        assert!(cmdline_matches_profile(
+            r#"--USER-DATA-DIR=c:\users\example\appdata\local\codexdreamskin\cdp-profile"#,
+            profile
+        ));
+        // 外来会话（默认档案）不应匹配
+        assert!(!cmdline_matches_profile(
+            r#"ChatGPT.exe --remote-debugging-port=9222"#,
+            profile
+        ));
+        // 空串边界
+        assert!(!cmdline_matches_profile("", profile));
+    }
+
+    #[test]
+    fn profile_match_no_verbatim_prefix_input() {
+        let profile = r"C:\Users\Example\AppData\Local\CodexDreamSkin\cdp-profile";
+        assert!(cmdline_matches_profile(
+            r#"--user-data-dir=C:\Users\Example\AppData\Local\CodexDreamSkin\cdp-profile"#,
+            profile
+        ));
+        assert!(!cmdline_matches_profile(
+            r#"--user-data-dir=C:\Users\Example\AppData\Local\Other\profile"#,
+            profile
+        ));
+    }
 }
