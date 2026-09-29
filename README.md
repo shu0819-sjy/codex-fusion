@@ -2,12 +2,14 @@
 
 Local desktop companion for [OpenAI Codex](https://openai.com/codex): wallpaper themes, dynamic effects, and a bounded workspace shell — without modifying the official Codex install.
 
-> Status: **v0.2.0** industrial open-source baseline (paths portable, config templated, tray/single-instance hardened).
+> Status: **v0.3.0** — adds a foreign-session guard, file diagnostics, and process-spawn hardening on top of the v0.2.0 open-source baseline (portable paths, templated config, hardened tray/single-instance).
 
 ## Features
 
 - **Theme Studio** — browse / create / apply local Dream Skin wallpapers with live preview
 - **Dynamic effects** — rain, particles, snow, fog, and more (requires Codex CDP)
+- **Foreign-session guard** — detect un-skinned official Codex sessions and close them in one click to free resources
+- **File diagnostics** — `host-out.log` / `host-crash.log` with an in-Studio "open log" button
 - **Single entry** — one Fusion host launches theme service + optional CDP inject
 - **Tray native** — close-to-tray, left-click restore, restart Codex with skin
 - **Bounded workspace** — optional Code-Codex style file tree via Rust bridge (workspace rooted)
@@ -55,7 +57,7 @@ Environment overrides (optional):
 | `CODEX_CODEX_PATH` | Path to `CodeCodex.exe` |
 | `CODEX_FUSION_BRIDGE` | Path to `fusion-bridge.exe` |
 
-On first run, the host creates the configured `dreamSkinStateRoot` directory if it does not exist. The tray restart action waits for the Codex process, CDP endpoint, and skin injection result; a failed restart is returned as an error instead of an immediate success.
+On first run, the host creates the configured `dreamSkinStateRoot` directory if it does not exist. The tray restart action waits for the Codex process, CDP endpoint, and skin injection result; a failed restart is returned as an error instead of an immediate success. Diagnostics are written to `host-out.log` (and `host-crash.log` on panic) in the install root — both are gitignored.
 
 ## Safety boundaries
 

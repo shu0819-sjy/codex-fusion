@@ -10,6 +10,11 @@
   // 画布总像素预算：超过后按窗口面积反推 DPR，避免 4K/高分屏整窗逐帧填充过重
   var MAX_CANVAS_PIXELS = 8500000;
   var MAX_DELTA_SECONDS = 0.05;
+  // 自适应帧率：系统空闲时按 60fps 满速渲染（满画质）；
+  // 仅当单帧成本超过 SLOW_FRAME_COST_MS（系统繁忙）时，下一帧让出 BACKOFF_FRAME_MS，负载回落自动恢复满速。
+  var BASE_FRAME_INTERVAL_MS = 16;
+  var SLOW_FRAME_COST_MS = 28;
+  var BACKOFF_FRAME_MS = 8;
   var EFFECTS = {};
   var PRESETS = [
     { id: 'fog-misty', type: 'fog', config: { layers: 4, skyLayers: 6, speed: 0.26, opacity: 0.62, density: 0.82, color: '198,214,228' } },
@@ -29,7 +34,8 @@
   var engine = {
     canvas: null, ctx: null, animationId: null, effect: 'none', preset: 'none', config: {}, state: null,
     sceneProfile: null, width: 0, height: 0, dpr: 1, lastFrameAt: 0, paused: false, reducedMotion: false,
-    quality: 1, slowFrames: 0, fastFrames: 0, pointerX: 0.5, pointerY: 0.5, pointerTargetX: 0.5, pointerTargetY: 0.5,
+    quality: 1, slowFrames: 0, fastFrames: 0, backoffMs: 0,
+    pointerX: 0.5, pointerY: 0.5, pointerTargetX: 0.5, pointerTargetY: 0.5,
   };
 
   if (window.dynamicEffects && typeof window.dynamicEffects.stop === 'function') {
@@ -240,12 +246,13 @@
     if (frameCostMs > 23) { engine.slowFrames += 1; engine.fastFrames = 0; }
     else if (frameCostMs < 13) { engine.fastFrames += 1; engine.slowFrames = 0; }
     else { engine.slowFrames = 0; engine.fastFrames = 0; }
-    if (engine.slowFrames >= 90 && engine.quality > 0.56) {
-      engine.quality = Math.max(0.56, engine.quality - 0.1);
+    // 自适应质量：约 0.2 秒连续慢帧才降一档密度（画质优先，只有真卡才降）；约 0.75 秒流畅即恢复一档
+    if (engine.slowFrames >= 12 && engine.quality > 0.75) {
+      engine.quality = Math.max(0.75, engine.quality - 0.1);
       engine.slowFrames = 0;
       initializeCurrentEffect();
     }
-    if (engine.fastFrames >= 180 && engine.quality < 1) {
+    if (engine.fastFrames >= 45 && engine.quality < 1) {
       engine.quality = Math.min(1, engine.quality + 0.1);
       engine.fastFrames = 0;
       initializeCurrentEffect();
@@ -2152,6 +2159,11 @@
       return;
     }
     if (engine.paused || engine.effect === 'none' || !engine.ctx || !engine.state) return;
+    // 自适应帧预算：平时按 60fps 上限满速；系统繁忙（单帧成本超标）时下一帧让出缓冲，负载回落自动恢复
+    if (engine.lastFrameAt && timestamp - engine.lastFrameAt < BASE_FRAME_INTERVAL_MS + engine.backoffMs) {
+      engine.animationId = requestAnimationFrame(renderFrame);
+      return;
+    }
     var startedAt = performance.now();
     var deltaSeconds = engine.lastFrameAt ? clamp((timestamp - engine.lastFrameAt) / 1000, 0, MAX_DELTA_SECONDS) : 1 / 60;
     engine.lastFrameAt = timestamp;
@@ -2161,7 +2173,9 @@
     engine.ctx.clearRect(0, 0, engine.width, engine.height);
     renderer.update(engine.state, engine.config, deltaSeconds);
     renderer.draw(engine.state, engine.config);
-    adaptQuality(performance.now() - startedAt);
+    var frameCostMs = performance.now() - startedAt;
+    engine.backoffMs = frameCostMs > SLOW_FRAME_COST_MS ? BACKOFF_FRAME_MS : 0;
+    adaptQuality(frameCostMs);
     engine.animationId = requestAnimationFrame(renderFrame);
   }
 

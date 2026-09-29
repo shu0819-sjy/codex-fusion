@@ -15,6 +15,8 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{Manager, State};
 mod codex_runtime;
 mod injector;
+mod log;
+mod proc;
 mod theme_service;
 
 use std::sync::OnceLock;
@@ -155,10 +157,10 @@ fn load_fusion_config() -> Result<FusionConfig, String> {
         {
             seeded.dream_skin_state_root = default_state_root().display().to_string();
         }
-        fs::write(
+        codex_runtime::atomic_write_json(
             &config_file,
-            serde_json::to_string_pretty(&seeded)
-                .map_err(|error| format!("写入默认配置失败：{error}"))?,
+            &serde_json::to_value(&seeded)
+                .map_err(|error| format!("序列化默认配置失败：{error}"))?,
         )
         .map_err(|error| format!("写入默认配置失败：{error}"))?;
     }
@@ -306,6 +308,7 @@ fn start_bridge() -> Result<BridgeProcess, String> {
         return Err(format!("找不到 Rust 桥接程序：{}", bridge_path.display()));
     }
     let mut command = Command::new(&bridge_path);
+    proc::hide_console(&mut command);
     command
         .arg(config.workspace)
         .current_dir(fusion_root())
@@ -349,12 +352,15 @@ fn wait_for_port(port: u16, timeout: Duration) -> bool {
 fn theme_path_allowed(method: &str, path: &str) -> bool {
     const ALLOWED: &[(&str, &str)] = &[
         ("GET", "/api/health"),
+        ("GET", "/api/foreign-codex"),
         ("GET", "/api/themes"),
         ("GET", "/api/effect/current"),
         ("GET", "/api/effects"),
         ("GET", "/api/active-preview"),
         ("GET", "/api/open-dir"),
+        ("GET", "/api/open-log"),
         ("POST", "/api/restart-codex"),
+        ("POST", "/api/close-foreign-codex"),
         ("POST", "/api/themes/apply"),
         ("POST", "/api/themes/delete"),
         ("POST", "/api/themes/create"),
@@ -594,6 +600,7 @@ fn run_switch_script(
     // 清掉上一轮结果，确保本次成功必然伴随本脚本新写出的结果文件
     let _ = fs::remove_file(result_path);
     let mut command = Command::new("powershell.exe");
+    proc::hide_console(&mut command);
     command
         .args([
             "-NoProfile",
@@ -695,9 +702,9 @@ fn ensure_dream_skin_mode() -> Result<Value, String> {
     // our profile, ensure_dream_skin_runtime will restart ChatGPT only when needed.
     match codex_runtime::ensure_dream_skin_runtime(false) {
         Ok(value) => {
-            let _ = fs::write(
-                fusion_root().join("last-ensure-result.json"),
-                serde_json::to_vec_pretty(&value).unwrap_or_default(),
+            let _ = codex_runtime::atomic_write_json(
+                &fusion_root().join("last-ensure-result.json"),
+                &value,
             );
             Ok(value)
         }
@@ -708,9 +715,9 @@ fn ensure_dream_skin_mode() -> Result<Value, String> {
               "action": "ensure-dream-skin-mode",
               "message": error,
             });
-            let _ = fs::write(
-                fusion_root().join("last-ensure-result.json"),
-                serde_json::to_vec_pretty(&failure).unwrap_or_default(),
+            let _ = codex_runtime::atomic_write_json(
+                &fusion_root().join("last-ensure-result.json"),
+                &failure,
             );
             Err(error)
         }
@@ -726,7 +733,9 @@ fn mode_status() -> Result<Value, String> {
         return Ok(serde_json::json!({ "mode": "unknown", "message": "找不到模式探测库。" }));
     }
     let probe = "& { . $args[0]; $paths = Get-FusionSwitchPaths; Assert-FusionDreamSkinLibrary -Paths $paths; . $paths.CommonScript; . $paths.ThemeScript; $statePath = $paths.StatePath; $state = if (Test-Path -LiteralPath $statePath) { Read-DreamSkinState -Path $statePath } else { $null }; $official = @(); foreach ($install in @(Get-DreamSkinRegisteredCodexInstalls)) { $official += [string]$install.Executable }; $mode = Get-FusionMode -Snapshot @(Get-FusionProcessSnapshot) -OfficialExecutables $official -DreamSkinProfileToken (Get-FusionProfileToken -ProfilePath $state.profilePath) -CodeCodexRoot $paths.CodeCodexRoot -DreamSkinExecutable $state.codexExe; [pscustomobject]@{ mode = $mode.Mode; dreamSkinProcesses = @($mode.DreamSkinProcesses).Count; codeCodexProcesses = @($mode.CodeCodexProcesses).Count; foreignCodexProcesses = @($mode.ForeignCodexProcesses).Count } | ConvertTo-Json -Compress }";
-    let output = Command::new("powershell.exe")
+    let mut ps = Command::new("powershell.exe");
+    proc::hide_console(&mut ps);
+    let output = ps
         .args([
             "-NoProfile",
             "-NonInteractive",
@@ -824,7 +833,9 @@ $ports = @(Get-CimInstance Win32_Process -Filter "Name = 'ChatGPT.exe'" -ErrorAc
             .join("code-codex-session.json")
             .display()
     );
-    let output = Command::new("powershell.exe")
+    let mut ps = Command::new("powershell.exe");
+    proc::hide_console(&mut ps);
+    let output = ps
         .args([
             "-NoProfile",
             "-NonInteractive",
@@ -958,6 +969,7 @@ fn active_theme_id() -> String {
 }
 
 fn main() {
+    log::init();
     // 单实例：已有实例时把其窗口带回前台并退出本进程
     #[cfg(windows)]
     if single_instance::check_existing_instance() {
@@ -967,12 +979,12 @@ fn main() {
     let bridge = match start_bridge() {
         Ok(bridge) => Some(bridge),
         Err(error) => {
-            eprintln!("Codex Fusion 桥接不可用：{error}（主题工作台仍可正常使用）");
+            log::line(&format!("桥接不可用：{error}（主题工作台仍可正常使用）"));
             None
         }
     };
     if let Err(error) = theme_service::start() {
-        eprintln!("Codex Fusion 内嵌主题服务不可用：{error}");
+        log::line(&format!("内嵌主题服务不可用：{error}"));
     }
     // 等主题服务就绪再进事件循环：前端首屏会立即请求 /api/themes。
     let _ = wait_for_port(THEME_PORT, Duration::from_secs(8));
@@ -980,7 +992,7 @@ fn main() {
     std::thread::spawn(|| {
         std::thread::sleep(Duration::from_secs(3));
         if let Err(error) = ensure_dream_skin_mode() {
-            eprintln!("Codex Fusion 启动自检未能确保 Dream Skin 模式：{error}");
+            log::line(&format!("启动自检未能确保 Dream Skin 模式：{error}"));
         }
     });
     tauri::Builder::default()

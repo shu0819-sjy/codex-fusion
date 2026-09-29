@@ -3,6 +3,23 @@
 All notable changes to Codex Fusion are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/), versioning: SemVer.
 
+## [0.3.0] - 2026-09-29
+
+### Added
+- **Foreign-session guard**: the Studio detects un-skinned official Codex sessions (`GET /api/foreign-codex`) and can close them in one click (`POST /api/close-foreign-codex`) to free CPU/memory. Only processes without the skin are matched; the skinned session is never touched.
+- **File diagnostics**: the GUI-subsystem host now writes `host-out.log` (timestamped, thread-safe) and captures panics to `host-crash.log`; a new `/api/open-log` endpoint plus a Studio toolbar button open the log file directly.
+- **Opt-in Code-Codex switching**: the mode-switch entry is hidden by default so accidental clicks cannot close a running skinned session; enable it explicitly in Settings.
+
+### Changed
+- Connection status shows a neutral "detecting…" state until the first probe completes — no more brief red flash while the startup self-check is still healing.
+- Host internals split into dedicated `log` and `proc` modules; new application icons.
+- Dynamic-effects script (v5) refinements.
+
+### Fixed
+- No more flashing console windows: every background child process (PowerShell probes, workspace bridge) is spawned with `CREATE_NO_WINDOW`.
+- Runtime state (`fusion-config.json` seed, `last-ensure-result.json`) is now written atomically, so a crash mid-write can no longer leave truncated JSON.
+- The ChatGPT process probe is cached for 2 seconds; frontend health polling no longer spawns a PowerShell process per request.
+
 ## [0.2.0] - 2026-09-28
 
 Open-source baseline.

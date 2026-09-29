@@ -10,6 +10,9 @@
 # 纯选择函数（Select-* / Get-FusionMode / Get-FusionDescendantIds）只吃快照数组，
 # 便于用固定数据做单元测试，不触碰真实进程。
 
+# 统一输出编码为 UTF-8：宿主（Rust）按 UTF-8 捕获 stdout/stderr，避免中文错误信息乱码。
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+
 $script:FusionSwitchExitCodes = [ordered]@{
   Success                 = 0
   UnexpectedFailure       = 1

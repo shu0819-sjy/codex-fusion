@@ -1,7 +1,7 @@
 {
   "name": "codex-fusion-frontend",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Codex Fusion 受限工作区前端：文件树、文本预览与编辑（本地优先，桥接层可替换）",
   "scripts": {

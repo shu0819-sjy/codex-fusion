@@ -25,7 +25,9 @@ fn http_get_json_via_powershell(port: u16, path: &str) -> Result<Value, String> 
     let script = format!(
     "$ProgressPreference='SilentlyContinue'; try {{ (Invoke-WebRequest -Uri 'http://127.0.0.1:{port}{path}' -UseBasicParsing -TimeoutSec 3).Content }} catch {{ [Console]::Error.WriteLine($_.Exception.Message); exit 2 }}"
   );
-    let output = std::process::Command::new("powershell.exe")
+    let mut ps = std::process::Command::new("powershell.exe");
+    crate::proc::hide_console(&mut ps);
+    let output = ps
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
         .output()
         .map_err(|e| e.to_string())?;

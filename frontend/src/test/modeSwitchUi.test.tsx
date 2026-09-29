@@ -20,14 +20,15 @@ afterEach(() => {
   delete window.__codexFusionThemeRequest__;
 });
 
-/** 功能：渲染主题页并等待首屏加载完成；入参：可选切换回调与当前模式；返回：userEvent 实例。 */
+/** 功能：渲染主题页并等待首屏加载完成；入参：可选切换回调与当前模式；返回：userEvent 实例。
+ *  模式切换测试显式启用 Code-Codex 入口（生产默认隐藏）。 */
 async function renderStudio(
   onRequestModeSwitch: (target: 'dream-skin' | 'code-codex') => Promise<unknown>,
   activeMode: 'dream-skin' | 'code-codex' | 'unknown' = 'dream-skin',
 ) {
   window.__codexFusionThemeRequest__ = vi.fn(async () => themePayload);
   const user = userEvent.setup();
-  render(<ThemeStudio onRequestModeSwitch={onRequestModeSwitch as never} activeMode={activeMode} />);
+  render(<ThemeStudio onRequestModeSwitch={onRequestModeSwitch as never} activeMode={activeMode} enableCodeCodex />);
   await screen.findByRole('heading', { name: '夜航' });
   return user;
 }
@@ -151,5 +152,20 @@ describe('模式切换 UI', () => {
 
     // 顶栏 Mode+CDP 芯片也是 role=status，启动提示用文案定位避免歧义
     expect(await screen.findByText(/上次模式切换没有跑完就被中断了/)).toBeInTheDocument();
+  });
+
+  it('默认隐藏全部模式入口（工作区/切回/切换到 Code-Codex，仅显式启用才显示）', async () => {
+    const onRequestModeSwitch = vi.fn(async () => ({ outcome: 'success' }));
+    window.__codexFusionThemeRequest__ = vi.fn(async () => themePayload);
+    const user = userEvent.setup();
+    render(<ThemeStudio onRequestModeSwitch={onRequestModeSwitch as never} activeMode="dream-skin" />);
+    await screen.findByRole('heading', { name: '夜航' });
+
+    expect(screen.queryByRole('button', { name: /切换到 Code-Codex/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Dream Skin · 当前/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /工作区/ })).not.toBeInTheDocument();
+    // 状态指示（品牌标题 + mode chip）仍保留
+    expect(screen.getAllByText(/Dream Skin/).length).toBeGreaterThan(0);
+    void user;
   });
 });
