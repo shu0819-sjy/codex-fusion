@@ -346,7 +346,7 @@ Describe '场景四：Code-Codex 启动失败' {
 
     # 旧的浏览器入口已不再被任何流程使用：它每次都会无条件再开一个主题面板，属于重复窗口。
     $panelUse = @()
-    foreach ($file in @(Get-ChildItem -Path 'D:\CodexFusion' -Filter *.ps1 -File)) {
+    foreach ($file in @(Get-ChildItem -Path (Split-Path -Parent $PSScriptRoot) -Filter *.ps1 -File)) {
       if ($file.Name -eq 'switch-common.ps1') { continue }
       if ([System.IO.File]::ReadAllText($file.FullName) -match 'Invoke-FusionDreamSkinRestore') { $panelUse += $file.Name }
     }
