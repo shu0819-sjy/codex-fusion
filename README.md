@@ -1,86 +1,123 @@
 # Codex Fusion
 
-Local desktop companion for [OpenAI Codex](https://openai.com/codex): wallpaper themes, dynamic effects, and a bounded workspace shell — without modifying the official Codex install.
+Codex Fusion is a Windows desktop companion for official Codex. It provides local wallpaper themes, dynamic effects, a bounded workspace shell, and a Tauri/Rust host without replacing the official Codex installation.
 
-> Status: **v0.3.0** — adds a foreign-session guard, file diagnostics, and process-spawn hardening on top of the v0.2.0 open-source baseline (portable paths, templated config, hardened tray/single-instance).
+> Status: **v0.3.0**. The supported desktop target is Windows 10/11. The frontend can be built on other operating systems, but the Codex process integration, tray workflow, and PowerShell test suite are Windows-specific and are not advertised as native macOS/Linux support.
 
 ## Features
 
-- **Theme Studio** — browse / create / apply local Dream Skin wallpapers with live preview
-- **Dynamic effects** — rain, particles, snow, fog, and more (requires Codex CDP)
-- **Foreign-session guard** — detect un-skinned official Codex sessions and close them in one click to free resources
-- **File diagnostics** — `host-out.log` / `host-crash.log` with an in-Studio "open log" button
-- **Single entry** — one Fusion host launches theme service + optional CDP inject
-- **Tray native** — close-to-tray, left-click restore, restart Codex with skin
-- **Bounded workspace** — optional Code-Codex style file tree via Rust bridge (workspace rooted)
+- **Theme Studio**: browse, create, preview, and apply local Dream Skin themes;
+- **Dynamic effects**: rain, particles, snow, fog, and related effects through Codex CDP;
+- **Foreign-session guard**: detect unskinned official Codex sessions and close them only after a user action;
+- **File diagnostics**: open `host-out.log` and `host-crash.log` from the Studio;
+- **Single entry point**: launch the Fusion host, theme service, and optional CDP injection together;
+- **Native tray**: close to tray, restore, and restart Codex with the configured skin;
+- **Bounded workspace**: optional workspace bridge rooted at the configured workspace directory.
 
-## Requirements
+## Requirements and support boundary
 
-- Windows 10/11
-- [Rust](https://rustup.rs/) + Node.js 18+
-- Official Codex (Microsoft Store / OpenAI package)
-- Optional: [Code-Codex](https://github.com/Rice-dog/code-codex) for workspace mode
+For the full desktop application:
 
-## Quick start
+- Windows 10 or Windows 11;
+- Node.js 20 LTS or newer (Node 22 is covered by CI);
+- npm 10 or newer; use the committed `package-lock.json` files;
+- Rust stable with the Windows Tauri prerequisites;
+- An installed official Codex package;
+- Optional: [Code-Codex](https://github.com/Rice-dog/code-codex) for workspace bridge mode.
+
+The frontend build and tests are exercised on Ubuntu, Windows, and macOS in CI. The Rust host and process/tray integration remain Windows-only in this release. Do not infer native macOS/Linux host support from the frontend matrix.
+
+## Reproducible bootstrap
+
+The repository uses npm consistently. Do not mix `pnpm install` with the checked-in npm lockfiles. From the repository root, create a local configuration first:
 
 ```powershell
-git clone https://github.com/shu0819-sjy/codex-fusion.git
-cd codex-fusion
 copy fusion-config.example.json fusion-config.json
-# edit fusion-config.json → set "workspace" to a real folder
-
-# 1) frontend
-cd frontend
-npm install
-npm run build
-
-# 2) host
-cd ..\host\src-tauri
-cargo build --release
-
-# 3) workspace bridge (built from upstream Code-Codex)
-git clone https://github.com/Rice-dog/code-codex.git ..\code-codex-upstream
-cargo build --release -p workspace-service --manifest-path ..\code-codex-upstream\crates\workspace-service\Cargo.toml
-copy ..\code-codex-upstream\target\release\workspace-service.exe ..\..\bin\fusion-bridge.exe
-
-# 4) run
-..\..\start-codex-fusion.cmd
-# or
-.\target\release\codex-fusion-host.exe
 ```
 
-Environment overrides (optional):
+Edit `fusion-config.json` and set `workspace` to an existing directory. Keep this file local; it is ignored by Git because it contains machine-specific paths.
 
-| Variable | Meaning |
+Install and build the frontend with the lockfile:
+
+```powershell
+cd frontend
+npm ci
+npm run build
+npm test
+```
+
+Install the Tauri CLI with its own lockfile, then build the Windows host:
+
+```powershell
+cd ..\host
+npm ci
+cd src-tauri
+cargo build --release
+```
+
+The host points at `frontend/dist`, so build the frontend before `cargo build`. The output executable is `host\src-tauri\target\release\codex-fusion-host.exe`. Start it with:
+
+```powershell
+cd ..\..
+.\start-codex-fusion.cmd
+```
+
+For development mode, use the Tauri CLI from the host directory:
+
+```powershell
+cd host
+npm run dev
+```
+
+The workspace bridge is optional. If you need it, clone the upstream repository separately, build only `workspace-service`, and point `CODEX_FUSION_BRIDGE` to the resulting executable. Do not commit the bridge binary or third-party checkout.
+
+## Configuration
+
+Start from [`fusion-config.example.json`](./fusion-config.example.json):
+
+| Key | Meaning |
 |---|---|
-| `CODEX_FUSION_ROOT` | Install root (auto-detected from exe if unset) |
-| `CODEX_CODEX_PATH` | Path to `CodeCodex.exe` |
-| `CODEX_FUSION_BRIDGE` | Path to `fusion-bridge.exe` |
+| `workspace` | Existing directory that bounds workspace operations; it must be a directory. |
+| `dreamSkinPort` | Theme service port; the host validates the allowed range and fixed CDP relationship. |
+| `dreamSkinStateRoot` | Local state directory; the host creates it if missing. |
+| `safeMode` | Must remain `true`; disabling bounded workspace checks is rejected. |
+| `version` | Configuration template version; update it with the repository release. |
 
-On first run, the host creates the configured `dreamSkinStateRoot` directory if it does not exist. The tray restart action waits for the Codex process, CDP endpoint, and skin injection result; a failed restart is returned as an error instead of an immediate success. Diagnostics are written to `host-out.log` (and `host-crash.log` on panic) in the install root — both are gitignored.
+Optional environment overrides are `CODEX_FUSION_ROOT`, `CODEX_CODEX_PATH`, and `CODEX_FUSION_BRIDGE`. Use absolute paths when overriding an executable. Diagnostics are written under the install root and are ignored by Git.
+
+## Tests and CI
+
+Local frontend checks:
+
+```powershell
+cd frontend
+npm ci
+npm run build
+npm test
+```
+
+The CI workflow runs frontend install/build/tests on Ubuntu, Windows, and macOS with Node 20 and 22. It separately runs Rust `cargo check`, tests, Clippy, and formatting on Windows, dynamic-effects Node tests on Ubuntu, and the Pester process-switch suite on Windows. Hosted non-Windows jobs cover the frontend only; they do not prove native desktop support.
 
 ## Safety boundaries
 
-- Does **not** patch or replace the official Codex binary
-- Process kill paths are path+profile scoped (never kill-by-name alone)
-- Theme apply / Codex restart are **user-triggered**
-- If Codex is already running without CDP, use tray **Restart Codex (with skin)**
+- Does not patch or replace the official Codex binary;
+- Process termination paths are scoped by executable path and profile, not process name alone;
+- Theme application and Codex restart require a user-triggered action;
+- Workspace operations stay under the configured root;
+- `fusion-config.json`, logs, state, third-party copies, and generated binaries stay out of version control.
 
 ## Project layout
 
+```text
+frontend/                 # React/Vite Theme Studio and workspace UI
+host/src-tauri/            # Tauri 2 Rust host and Windows integration
+host/package.json          # Tauri CLI, installed with host/package-lock.json
+host/src-tauri/Cargo.toml  # Rust dependencies
+tests/                     # PowerShell/Pester process tests
+fusion-config.example.json # Safe configuration template
+licenses/                  # Third-party notices
 ```
-codex-fusion/
-  frontend/          # React Theme Studio + workspace UI
-  host/src-tauri/    # Tauri 2 host, theme HTTP :17890, CDP inject
-  bin/               # fusion-bridge.exe (workspace RPC)
-  licenses/          # third-party notices
-  fusion-config.example.json
-```
 
-## License
+## License and disclaimer
 
-MIT — see [LICENSE](./LICENSE). Third-party components retain their own licenses under `licenses/`.
-
-## Disclaimer
-
-Unofficial community tool. Not affiliated with OpenAI. Use at your own risk.
+MIT, see [LICENSE](./LICENSE). Third-party components retain the licenses in `licenses/`. This is an unofficial community tool and is not affiliated with OpenAI. Use it at your own risk.
